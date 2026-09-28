@@ -107,9 +107,13 @@ index e835b1c33d86..4b28818cba05 100644
  
  // Use software webrender on simulator due to missing APIs.
  #if TARGET_OS_SIMULATOR
-@@ -19,3 +115,5 @@ pref("security.sandbox.content.level", 1);
+@@ -19,3 +115,9 @@ pref("security.sandbox.content.level", 1);
  // 1 complete progressbar at DOMContentLoaded
  // 2 complete progressbar at first MozAfterPaint after DOMContentLoaded
  pref("page_load.progressbar_completion", 2);
 +
 +pref("toolkit.defaultChromeURI", "chrome://geckoview/content/geckoview.xhtml");
++// Certificate error pages read these without a fallback value; define
++// desktop-equivalent defaults so RPMGetBoolPref does not throw (see #318).
++pref("security.certerrors.permanentOverride", true);
++pref("security.certerrors.mitm.priming.enabled", true);
