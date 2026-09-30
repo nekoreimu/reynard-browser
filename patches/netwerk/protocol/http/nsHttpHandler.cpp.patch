@@ -1,8 +1,8 @@
 diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
-index 0192e5f6f2ed..6811576fae76 100644
+index 0699d970c4d1..1967aa0d5f76 100644
 --- a/netwerk/protocol/http/nsHttpHandler.cpp
 +++ b/netwerk/protocol/http/nsHttpHandler.cpp
-@@ -659,6 +659,23 @@ nsresult nsHttpHandler::InitConnectionMgr() {
+@@ -667,6 +667,23 @@ nsresult nsHttpHandler::InitConnectionMgr() {
                          mBeConservativeForProxy);
  }
  

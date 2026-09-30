@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
-index a3b9fd9eadac..640f7979f08e 100644
+index 16ed33548742..bb86b7c2bc57 100644
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
-@@ -3030,14 +3030,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
+@@ -2943,14 +2943,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -20,7 +20,7 @@ index a3b9fd9eadac..640f7979f08e 100644
    } else {
      // This can fail if we've already started shutting down the compositor
      // thread. See Bug 1562763 comment 8. On Android this can fail we are are
-@@ -3209,16 +3210,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
+@@ -3122,16 +3123,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -40,7 +40,7 @@ index a3b9fd9eadac..640f7979f08e 100644
  }
  
  void ContentParent::OnCompositorDeviceReset() {
-@@ -3975,9 +3977,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
+@@ -3887,9 +3889,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
  
    // listening for memory pressure event
    if (!strcmp(aTopic, "memory-pressure")) {
@@ -58,7 +58,7 @@ index a3b9fd9eadac..640f7979f08e 100644
    } else if (!strcmp(aTopic, "application-background")) {
      (void)SendApplicationBackground();
    } else if (!strcmp(aTopic, "application-foreground")) {
-@@ -8204,6 +8213,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
+@@ -8159,6 +8168,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
  }
  #endif
  
@@ -73,6 +73,6 @@ index a3b9fd9eadac..640f7979f08e 100644
 +  return IPC_OK();
 +}
 +
- nsCString ThreadsafeContentParentHandle::GetRemoteType() {
+ RemoteType ThreadsafeContentParentHandle::GetRemoteType() {
    return mLoadedOrigins->GetRemoteType();
  }

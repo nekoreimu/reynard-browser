@@ -1,0 +1,17 @@
+diff --git a/third_party/llama.cpp/moz.build b/third_party/llama.cpp/moz.build
+index 5e0292cfa197..0b7ca901c318 100644
+--- a/third_party/llama.cpp/moz.build
++++ b/third_party/llama.cpp/moz.build
+@@ -169,6 +169,12 @@ if CONFIG['OS_TARGET'] == 'Darwin':
+       '-framework Metal',
+       '-framework MetalKit',
+   ]
++  
++  if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'uikit':
++      OS_LIBS += [
++          '-L' + CONFIG['IOS_COMPILER_RT'].rsplit('/', 1)[0],
++          'clang_rt.iossim' if CONFIG['IPHONEOS_IS_SIMULATOR'] else 'clang_rt.ios',
++      ]
+ 
+ if CONFIG["OS_TARGET"] == "Linux":
+   OS_LIBS += [

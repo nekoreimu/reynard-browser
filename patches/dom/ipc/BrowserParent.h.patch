@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/BrowserParent.h b/dom/ipc/BrowserParent.h
-index 6869c41f6549..5db6773f8468 100644
+index 876f0c6bc0b5..1f002e79c8b8 100644
 --- a/dom/ipc/BrowserParent.h
 +++ b/dom/ipc/BrowserParent.h
-@@ -393,6 +393,7 @@ class BrowserParent final : public PBrowserParent,
+@@ -397,6 +397,7 @@ class BrowserParent final : public PBrowserParent,
        const nsCursor& aValue, Maybe<IPCImage>&& aCustomCursor,
        const float& aResolutionX, const float& aResolutionY,
        const uint32_t& aHotspotX, const uint32_t& aHotspotY, const bool& aForce);
@@ -10,7 +10,7 @@ index 6869c41f6549..5db6773f8468 100644
  
    mozilla::ipc::IPCResult RecvSetLinkStatus(const nsString& aStatus);
  
-@@ -964,6 +965,10 @@ class BrowserParent final : public PBrowserParent,
+@@ -970,6 +971,10 @@ class BrowserParent final : public PBrowserParent,
    // tab, it should take this appearance.
    nsIWidget::Cursor mCursor;
  

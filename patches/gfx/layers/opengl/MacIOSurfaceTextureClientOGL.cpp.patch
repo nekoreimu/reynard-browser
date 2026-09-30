@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/opengl/MacIOSurfaceTextureClientOGL.cpp b/gfx/layers/opengl/MacIOSurfaceTextureClientOGL.cpp
-index b445db44d22e..8c4e1e6bb9e1 100644
+index 475128755cb3..959a7168674d 100644
 --- a/gfx/layers/opengl/MacIOSurfaceTextureClientOGL.cpp
 +++ b/gfx/layers/opengl/MacIOSurfaceTextureClientOGL.cpp
 @@ -7,12 +7,23 @@
@@ -26,7 +26,7 @@ index b445db44d22e..8c4e1e6bb9e1 100644
  MacIOSurfaceTextureData::MacIOSurfaceTextureData(MacIOSurface* aSurface,
                                                   BackendType aBackend)
      : mSurface(aSurface), mBackend(aBackend) {
-@@ -52,28 +63,19 @@ MacIOSurfaceTextureData* MacIOSurfaceTextureData::Create(const IntSize& aSize,
+@@ -52,19 +63,14 @@ MacIOSurfaceTextureData* MacIOSurfaceTextureData::Create(const IntSize& aSize,
  }
  
  bool MacIOSurfaceTextureData::Serialize(SurfaceDescriptor& aOutDescriptor) {
@@ -37,16 +37,6 @@ index b445db44d22e..8c4e1e6bb9e1 100644
 -      std::move(gpuFence));
 +  aOutDescriptor = MacIOSurfaceDescriptor(mSurface);
    return true;
- }
- 
- void MacIOSurfaceTextureData::GetSubDescriptor(
-     RemoteDecoderVideoSubDescriptor* const aOutDesc) {
--  RefPtr<layers::GpuFence> gpuFence;
--  *aOutDesc = SurfaceDescriptorMacIOSurface(
--      mSurface->GetIOSurfaceID(), !mSurface->HasAlpha(),
--      mSurface->GetYUVColorSpace(), mSurface->GetTransferFunction(),
--      std::move(gpuFence));
-+  *aOutDesc = MacIOSurfaceDescriptor(mSurface);
  }
  
  void MacIOSurfaceTextureData::FillInfo(TextureData::Info& aInfo) const {

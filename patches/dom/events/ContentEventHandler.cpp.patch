@@ -1,5 +1,5 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index 676c358f6e54..0f468e01a1d9 100644
+index d11a218cd050..022fd510ad62 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
 @@ -6,6 +6,9 @@
@@ -244,7 +244,7 @@ index 676c358f6e54..0f468e01a1d9 100644
    if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
      return NS_ERROR_FAILURE;
    }
-@@ -3408,13 +3585,63 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+@@ -3416,13 +3593,63 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }

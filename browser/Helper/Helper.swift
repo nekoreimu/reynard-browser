@@ -73,7 +73,7 @@ open class BrowserHelper: NSObject, GeckoProcessExtension, NSExtensionRequestHan
         }
     }
     
-    open func lockdownSandbox(_ revision: String!) {}
+    open func lockdownSandbox(_ revision: String) {}
 }
 
 @objc(ReynardHelperMain)

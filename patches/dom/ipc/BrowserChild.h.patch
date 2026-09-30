@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
-index db1acd2172c1..5e62bb14f507 100644
+index 81398b5c1312..8dd2f3d172d7 100644
 --- a/dom/ipc/BrowserChild.h
 +++ b/dom/ipc/BrowserChild.h
 @@ -274,7 +274,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
@@ -21,7 +21,7 @@ index db1acd2172c1..5e62bb14f507 100644
  
    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual mozilla::ipc::IPCResult RecvUpdateEffects(
        const EffectsInfo& aEffects);
-@@ -556,6 +557,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -553,6 +554,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
    ScreenIntCoord GetDynamicToolbarMaxHeight() const {
      return mDynamicToolbarMaxHeight;
    };
@@ -31,7 +31,7 @@ index db1acd2172c1..5e62bb14f507 100644
    mozilla::ScreenIntCoord GetKeyboardHeight() const { return mKeyboardHeight; }
  
    bool InAndroidPipMode() const { return mInAndroidPipMode; }
-@@ -878,6 +882,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -871,6 +875,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
    // NOTE: This value is valuable only for the top level browser.
    LayoutDeviceIntPoint mChromeOffset;
    ScreenIntCoord mDynamicToolbarMaxHeight;

@@ -1,8 +1,8 @@
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index 02a771ca9348..2a5421ca3ce5 100644
+index 06fe27c8d6cd..2fa719e22fdd 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
-@@ -244,6 +244,7 @@ nsPresContext::nsPresContext(dom::Document* aDocument, nsPresContextType aType)
+@@ -245,6 +245,7 @@ nsPresContext::nsPresContext(dom::Document* aDocument, nsPresContextType aType)
        mLastFontInflationScreenSize(gfxSize(-1.0, -1.0)),
        mCurAppUnitsPerDevPixel(0),
        mDynamicToolbarMaxHeight(0),
@@ -10,7 +10,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
        mDynamicToolbarHeight(0),
        mPageSize(-1, -1),
        mPageScale(0.0),
-@@ -714,12 +715,13 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
+@@ -715,12 +716,13 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
  
    mEventManager->SetPresContext(this);
  
@@ -25,7 +25,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
          mDynamicToolbarHeight = mDynamicToolbarMaxHeight;
        }
      }
-@@ -2892,18 +2894,27 @@ void nsPresContext::SetInitialVisibleArea(const nsRect& aRect) {
+@@ -2911,18 +2913,27 @@ void nsPresContext::SetInitialVisibleArea(const nsRect& aRect) {
    SetVisibleArea(aRect);
  }
  
@@ -55,7 +55,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
      // Changing the max height of the dynamic toolbar changes the ICB size, we
      // need to kick a reflow with the current window dimensions since the max
      // height change doesn't change the window dimensions but
-@@ -2960,15 +2971,14 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
+@@ -2979,15 +2990,14 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
      return;
    }
  
@@ -79,7 +79,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
      mPresShell->MarkStickyFramesForReflow();
      mPresShell->ScheduleResizeEventIfNeeded(
          PresShell::ResizeEventKind::Regular);
-@@ -3014,7 +3024,7 @@ DynamicToolbarState nsPresContext::GetDynamicToolbarState() const {
+@@ -3033,7 +3043,7 @@ DynamicToolbarState nsPresContext::GetDynamicToolbarState() const {
    if (mDynamicToolbarMaxHeight == mDynamicToolbarHeight) {
      return DynamicToolbarState::Expanded;
    }
@@ -88,7 +88,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
      return DynamicToolbarState::Collapsed;
    }
    return DynamicToolbarState::InTransition;
-@@ -3034,7 +3044,7 @@ nscoord nsPresContext::GetDynamicToolbarMaxHeightInAppUnits() const {
+@@ -3053,7 +3063,7 @@ nscoord nsPresContext::GetDynamicToolbarMaxHeightInAppUnits() const {
      return 0;
    }
    return CSSPixel::ToAppUnits(
@@ -97,7 +97,7 @@ index 02a771ca9348..2a5421ca3ce5 100644
        // For viewport units the dynamic toolbar height needs to be the height
        // as if this document is scaled by 1.0 whatever the current zoom scale
        // is.
-@@ -3046,24 +3056,24 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+@@ -3065,24 +3075,24 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
      return 0;
    }
    return GetDynamicToolbarState() == DynamicToolbarState::Collapsed

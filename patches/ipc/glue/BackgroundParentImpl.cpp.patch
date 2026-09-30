@@ -1,5 +1,5 @@
 diff --git a/ipc/glue/BackgroundParentImpl.cpp b/ipc/glue/BackgroundParentImpl.cpp
-index 4ad06e1ac4a1..a1f8412fdd4c 100644
+index baeb634e9f5e..2300684b90ab 100644
 --- a/ipc/glue/BackgroundParentImpl.cpp
 +++ b/ipc/glue/BackgroundParentImpl.cpp
 @@ -1483,10 +1483,11 @@ BackgroundParentImpl::RecvEnsureUtilityProcessAndCreateBridge(

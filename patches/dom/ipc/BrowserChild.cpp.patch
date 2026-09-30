@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
-index 36ec79dc9e3f..6854bb79ad80 100644
+index b1343b7ec3aa..cd352cde5565 100644
 --- a/dom/ipc/BrowserChild.cpp
 +++ b/dom/ipc/BrowserChild.cpp
 @@ -229,6 +229,13 @@ PresShell* BrowserChild::GetTopLevelPresShell() const {
@@ -24,7 +24,7 @@ index 36ec79dc9e3f..6854bb79ad80 100644
        mKeyboardHeight(0),
        mUniqueId(aTabId),
        mDidFakeShow(false),
-@@ -1252,8 +1260,9 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateRemoteStyle(
+@@ -1249,8 +1257,9 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateRemoteStyle(
  }
  
  mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
@@ -35,7 +35,7 @@ index 36ec79dc9e3f..6854bb79ad80 100644
  
    RefPtr<Document> document = GetTopLevelDocument();
    if (!document) {
-@@ -1261,7 +1270,7 @@ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
+@@ -1258,7 +1267,7 @@ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
    }
  
    if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {

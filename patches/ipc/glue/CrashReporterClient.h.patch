@@ -1,0 +1,15 @@
+diff --git a/ipc/glue/CrashReporterClient.h b/ipc/glue/CrashReporterClient.h
+index bde305696f1a..e69cc5018b06 100644
+--- a/ipc/glue/CrashReporterClient.h
++++ b/ipc/glue/CrashReporterClient.h
+@@ -22,7 +22,9 @@ class CrashReporterClient {
+   template <typename T>
+   static void InitSingleton(T* aToplevelProtocol) {
+     InitSingleton();
+-    (void)aToplevelProtocol->SendInitCrashReporter(CreateInitArgs());
++    if (!CrashReporter::IsDummy()) {
++      (void)aToplevelProtocol->SendInitCrashReporter(CreateInitArgs());
++    }
+   }
+ 
+   static void InitSingleton();

@@ -1,26 +1,33 @@
 diff --git a/toolkit/components/extensions/Extension.sys.mjs b/toolkit/components/extensions/Extension.sys.mjs
-index d67edb4ec1fe..b6efc29bd279 100644
+index 0af193502048..052d9c939d14 100644
 --- a/toolkit/components/extensions/Extension.sys.mjs
 +++ b/toolkit/components/extensions/Extension.sys.mjs
-@@ -203,7 +203,7 @@ const PRIVILEGED_PERMS_ANDROID_ONLY = new Set([
- 
- const PRIVILEGED_PERMS_DESKTOP_ONLY = new Set(["normandyAddonStudy"]);
+@@ -200,12 +200,23 @@ const PRIVILEGED_PERMS_ANDROID_ONLY = new Set([
+   "nativeMessaging",
+ ]);
  
 -if (AppConstants.platform == "android") {
++const PRIVILEGED_PERMS_DESKTOP_ONLY = new Set(["normandyAddonStudy"]);
++
 +if (lazy.AddonSettings.IS_EMBEDDED) {
    for (const perm of PRIVILEGED_PERMS_ANDROID_ONLY) {
      PRIVILEGED_PERMS.add(perm);
    }
-@@ -211,7 +211,7 @@ if (AppConstants.platform == "android") {
+ }
  
- if (
-   AppConstants.MOZ_APP_NAME != "firefox" ||
--  AppConstants.platform == "android"
++if (
++  AppConstants.MOZ_APP_NAME != "firefox" ||
 +  lazy.AddonSettings.IS_EMBEDDED
- ) {
-   for (const perm of PRIVILEGED_PERMS_DESKTOP_ONLY) {
-     PRIVILEGED_PERMS.delete(perm);
-@@ -711,8 +711,8 @@ export var ExtensionProcessCrashObserver = {
++) {
++  for (const perm of PRIVILEGED_PERMS_DESKTOP_ONLY) {
++    PRIVILEGED_PERMS.delete(perm);
++  }
++}
++
+ // Permissions that are not available in manifest version 2.
+ const PERMS_NOT_IN_MV2 = new Set([
+   // MV2 had a userScripts API, tied to "user_scripts" manifest key. In MV3 the
+@@ -699,8 +710,8 @@ export var ExtensionProcessCrashObserver = {
    // foreground for the first time then onPause/onResumed LifecycleListener
    // are called, the application-foreground/-background topics will be
    // notified to Gecko and this flag will be updated accordingly.

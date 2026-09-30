@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp b/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
-index 84afa8b56871..18c5fb2e6005 100644
+index 1a5e52e7fa99..b092ca98cdfc 100644
 --- a/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
 +++ b/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
 @@ -7,6 +7,7 @@
@@ -10,7 +10,7 @@ index 84afa8b56871..18c5fb2e6005 100644
  #include "mozilla/webrender/RenderMacIOSurfaceTextureHost.h"
  #include "mozilla/webrender/RenderThread.h"
  #include "mozilla/webrender/WebRenderAPI.h"
-@@ -14,14 +15,29 @@
+@@ -14,15 +15,30 @@
  namespace mozilla {
  namespace layers {
  
@@ -36,6 +36,7 @@ index 84afa8b56871..18c5fb2e6005 100644
  MacIOSurfaceTextureHostOGL::MacIOSurfaceTextureHostOGL(
      TextureFlags aFlags, const SurfaceDescriptorMacIOSurface& aDescriptor)
      : TextureHost(TextureHostType::MacIOSurface, aFlags),
+       mDescriptor(aDescriptor),
 -      mSurface(MacIOSurface::LookupSurface(
 -          aDescriptor.surfaceId(), aDescriptor.yUVColorSpace(),
 -          aDescriptor.transferFunction(),
@@ -45,7 +46,7 @@ index 84afa8b56871..18c5fb2e6005 100644
        mGpuFence(aDescriptor.gpuFence()) {
    MOZ_COUNT_CTOR(MacIOSurfaceTextureHostOGL);
    if (!mSurface) {
-@@ -128,7 +144,12 @@ void MacIOSurfaceTextureHostOGL::PushResourceUpdates(
+@@ -129,7 +145,12 @@ void MacIOSurfaceTextureHostOGL::PushResourceUpdates(
                      ? &wr::TransactionBuilder::AddExternalImage
                      : &wr::TransactionBuilder::UpdateExternalImage;
    auto imageType = wr::ExternalImageType::TextureHandle(

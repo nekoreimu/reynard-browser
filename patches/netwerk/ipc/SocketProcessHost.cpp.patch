@@ -1,5 +1,5 @@
 diff --git a/netwerk/ipc/SocketProcessHost.cpp b/netwerk/ipc/SocketProcessHost.cpp
-index 9a69f0e73ebb..ba5c787ee099 100644
+index 710de656a8e4..98763d54e613 100644
 --- a/netwerk/ipc/SocketProcessHost.cpp
 +++ b/netwerk/ipc/SocketProcessHost.cpp
 @@ -72,7 +72,7 @@ bool SocketProcessHost::Launch() {
@@ -8,6 +8,6 @@ index 9a69f0e73ebb..ba5c787ee099 100644
    SharedPreferenceSerializer prefSerializer;
 -  if (!prefSerializer.SerializeToSharedMemory(GeckoProcessType_VR,
 +  if (!prefSerializer.SerializeToSharedMemory(GeckoProcessType_Socket,
-                                               /* remoteType */ ""_ns)) {
+                                               /* remoteType */ {})) {
      return false;
    }

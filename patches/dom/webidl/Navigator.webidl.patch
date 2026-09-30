@@ -1,5 +1,5 @@
 diff --git a/dom/webidl/Navigator.webidl b/dom/webidl/Navigator.webidl
-index aee586a781a0..4fa3d8bf475e 100644
+index 00c1d6089082..e2334e2d472a 100644
 --- a/dom/webidl/Navigator.webidl
 +++ b/dom/webidl/Navigator.webidl
 @@ -48,7 +48,7 @@ interface mixin NavigatorID {
@@ -11,7 +11,7 @@ index aee586a781a0..4fa3d8bf475e 100644
    readonly attribute DOMString appVersion;
    [Pure, Cached, Throws, NeedsCallerType]
    readonly attribute DOMString platform;
-@@ -175,7 +175,7 @@ partial interface Navigator {
+@@ -174,7 +174,7 @@ partial interface Navigator {
  };
  
  partial interface Navigator {
@@ -20,7 +20,7 @@ index aee586a781a0..4fa3d8bf475e 100644
    readonly attribute DOMString oscpu;
    // WebKit/Blink support this; Trident/Presto do not.
    readonly attribute DOMString vendor;
-@@ -185,7 +185,7 @@ partial interface Navigator {
+@@ -184,7 +184,7 @@ partial interface Navigator {
    readonly attribute DOMString productSub;
    // WebKit/Blink/Trident/Presto support this.
    readonly attribute boolean cookieEnabled;

@@ -1,16 +1,17 @@
 diff --git a/gfx/webrender_bindings/src/moz2d_renderer.rs b/gfx/webrender_bindings/src/moz2d_renderer.rs
-index c885ba051ebd..4b90fee4ae9b 100644
+index 463c61318693..9a1ad938eaaf 100644
 --- a/gfx/webrender_bindings/src/moz2d_renderer.rs
 +++ b/gfx/webrender_bindings/src/moz2d_renderer.rs
-@@ -22,6 +22,7 @@ use std::collections::btree_map::BTreeMap;
+@@ -22,6 +22,8 @@ use std::collections::btree_map::BTreeMap;
  use std::collections::hash_map;
  use std::collections::hash_map::HashMap;
  use std::collections::Bound::Included;
 +use std::fmt;
- use std::i32;
++use std::i32;
  use std::mem;
  use std::os::raw::c_void;
-@@ -32,6 +33,8 @@ use std::sync::Arc;
+ use std::ptr;
+@@ -31,6 +33,8 @@ use std::sync::Arc;
  use core_foundation::string::CFString;
  #[cfg(any(target_os = "macos", target_os = "ios"))]
  use core_graphics::font::CGFont;
@@ -19,7 +20,7 @@ index c885ba051ebd..4b90fee4ae9b 100644
  #[cfg(any(target_os = "macos", target_os = "ios"))]
  use foreign_types::ForeignType;
  
-@@ -738,6 +741,50 @@ impl BlobImageHandler for Moz2dBlobImageHandler {
+@@ -737,6 +741,50 @@ impl BlobImageHandler for Moz2dBlobImageHandler {
  
  use bindings::{WrFontInstanceKey, WrFontKey, WrIdNamespace};
  
@@ -70,7 +71,7 @@ index c885ba051ebd..4b90fee4ae9b 100644
  #[allow(improper_ctypes)] // this is needed so that rustc doesn't complain about passing the &Arc<Vec> to an extern function
  extern "C" {
      fn HasFontData(key: WrFontKey) -> bool;
-@@ -811,11 +858,14 @@ impl Moz2dBlobImageHandler {
+@@ -810,11 +858,14 @@ impl Moz2dBlobImageHandler {
          }
  
          #[cfg(target_os = "windows")]
@@ -87,7 +88,7 @@ index c885ba051ebd..4b90fee4ae9b 100644
                  }
              }
  
-@@ -837,29 +887,71 @@ impl Moz2dBlobImageHandler {
+@@ -836,29 +887,71 @@ impl Moz2dBlobImageHandler {
                  .unwrap();
              let face = font.create_font_face();
              unsafe { AddNativeFontHandle(key, face.as_ptr() as *mut c_void, 0) };
@@ -173,7 +174,7 @@ index c885ba051ebd..4b90fee4ae9b 100644
          }
  
          fn process_fonts(
-@@ -874,21 +966,34 @@ impl Moz2dBlobImageHandler {
+@@ -873,21 +966,34 @@ impl Moz2dBlobImageHandler {
                  if scaled_fonts.contains(&font.font_instance_key) {
                      continue;
                  }
@@ -212,7 +213,7 @@ index c885ba051ebd..4b90fee4ae9b 100644
                      }
                      unsafe {
                          AddBlobFont(
-@@ -901,6 +1006,7 @@ impl Moz2dBlobImageHandler {
+@@ -900,6 +1006,7 @@ impl Moz2dBlobImageHandler {
                              instance.variations.len(),
                          );
                      }

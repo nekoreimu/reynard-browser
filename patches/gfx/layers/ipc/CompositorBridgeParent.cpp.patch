@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 89b0220589c8..f75da00b1345 100644
+index cd03582e7bc9..aec0cee34aa7 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
 @@ -834,9 +834,12 @@ void CompositorBridgeParent::SetConfirmedTargetAPZC(

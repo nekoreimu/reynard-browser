@@ -25,7 +25,7 @@ class GeckoRuntimeImpl: NSObject, SwiftGeckoViewRuntime {
         return GeckoEventDispatcherWrapper.runtimeInstance
     }
     
-    func dispatcher(byName name: UnsafePointer<CChar>!) -> any SwiftEventDispatcher {
+    func dispatcher(byName name: UnsafePointer<CChar>) -> any SwiftEventDispatcher {
         return GeckoEventDispatcherWrapper.lookup(byName: String(cString: name))
     }
     

@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/CoreTextFontList.h b/gfx/thebes/CoreTextFontList.h
-index 3909c507609b..1bcbe0d62196 100644
+index 780964a8755e..06b3a4c818c8 100644
 --- a/gfx/thebes/CoreTextFontList.h
 +++ b/gfx/thebes/CoreTextFontList.h
 @@ -35,6 +35,11 @@ class CTFontEntry final : public gfxFontEntry {
@@ -52,7 +52,7 @@ index 3909c507609b..1bcbe0d62196 100644
  
    const double mSizeHint;
  
-@@ -127,13 +149,15 @@ class CTFontFamily : public gfxFontFamily {
+@@ -128,13 +150,15 @@ class CTFontFamily : public gfxFontFamily {
    CTFontFamily(const nsACString& aName, FontVisibility aVisibility)
        : gfxFontFamily(aName, aVisibility) {}
  
@@ -71,7 +71,7 @@ index 3909c507609b..1bcbe0d62196 100644
    }
  
    virtual ~CTFontFamily() = default;
-@@ -149,7 +173,9 @@ class CTFontFamily : public gfxFontFamily {
+@@ -150,7 +174,9 @@ class CTFontFamily : public gfxFontFamily {
    // If non-null, this is a family representing the system UI font, and should
    // use the given CTFontRef as the basis for initialization as the normal
    // font-manager APIs based on family name won't handle it.

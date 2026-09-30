@@ -1,0 +1,22 @@
+diff --git a/build/moz.configure/toolchain.configure b/build/moz.configure/toolchain.configure
+index d58f3eb65ce0..58b7e0b1ef3d 100644
+--- a/build/moz.configure/toolchain.configure
++++ b/build/moz.configure/toolchain.configure
+@@ -443,6 +443,17 @@ with only_when(target_is_ios):
+ 
+     set_config("IPHONEOS_SDK_DIR", ios_sdk)
+ 
++    @depends(target_is_ios_simulator)
++    @imports(_from="os.path", _import="isfile")
++    def ios_compiler_rt(target_is_ios_simulator):
++        library = "libclang_rt.iossim.a" if target_is_ios_simulator else "libclang_rt.ios.a"
++        path = check_cmd_output("xcrun", "clang", "-print-file-name=" + library).rstrip()
++        if not isfile(path):
++            die("Could not find the iOS compiler runtime library: %s" % library)
++        return path
++
++    set_config("IOS_COMPILER_RT", ios_compiler_rt)
++
+ 
+ # GC rooting and hazard analysis.
+ # ==============================================================

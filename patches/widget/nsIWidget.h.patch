@@ -1,5 +1,5 @@
 diff --git a/widget/nsIWidget.h b/widget/nsIWidget.h
-index 1c1e4d5a1c2e..a37e7c872134 100644
+index 031a63b997c3..5973a9450fdb 100644
 --- a/widget/nsIWidget.h
 +++ b/widget/nsIWidget.h
 @@ -1606,8 +1606,8 @@ class nsIWidget : public nsSupportsWeakReference {

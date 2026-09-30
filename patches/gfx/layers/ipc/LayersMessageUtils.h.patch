@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/ipc/LayersMessageUtils.h b/gfx/layers/ipc/LayersMessageUtils.h
-index 178b9e9e64e3..ed6acfe240aa 100644
+index e7a609d0406d..09faecc2ea00 100644
 --- a/gfx/layers/ipc/LayersMessageUtils.h
 +++ b/gfx/layers/ipc/LayersMessageUtils.h
 @@ -292,6 +292,8 @@ struct ParamTraits<mozilla::layers::RepaintRequest>

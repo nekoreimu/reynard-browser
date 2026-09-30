@@ -1,5 +1,5 @@
 diff --git a/xpcom/threads/nsThread.cpp b/xpcom/threads/nsThread.cpp
-index 69a714b0d1b6..aff1963d45a9 100644
+index c9410cb57fb0..76dab67d3a4a 100644
 --- a/xpcom/threads/nsThread.cpp
 +++ b/xpcom/threads/nsThread.cpp
 @@ -80,10 +80,15 @@ using GetCurrentThreadStackLimitsFn = void(WINAPI*)(PULONG_PTR LowLimit,
