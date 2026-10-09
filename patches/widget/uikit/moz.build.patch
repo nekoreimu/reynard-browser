@@ -1,8 +1,8 @@
 diff --git a/widget/uikit/moz.build b/widget/uikit/moz.build
-index f5d8821773c0..4ddd530d3293 100644
+index f5d8821773c0..9182b7aa436a 100644
 --- a/widget/uikit/moz.build
 +++ b/widget/uikit/moz.build
-@@ -8,35 +8,59 @@ with Files("**"):
+@@ -8,35 +8,58 @@ with Files("**"):
  with Files("*TextInput*"):
      BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
  
@@ -55,14 +55,13 @@ index f5d8821773c0..4ddd530d3293 100644
      "nsUserIdleServiceUIKit.cpp",
      "nsWidgetFactory.mm",
      "nsWindow.mm",
-+    "PictureInPictureSupport.mm",
      "ScreenHelperUIKit.mm",
      "TextInputHandler.mm",
 +    "UIKitCompositorWidget.cpp",
      "UIKitUtils.mm",
  ]
  
-@@ -55,5 +79,6 @@ XPCOM_MANIFESTS += [
+@@ -55,5 +78,6 @@ XPCOM_MANIFESTS += [
  ]
  
  OS_LIBS += [

@@ -9,15 +9,6 @@ import Foundation
 import GeckoView
 import UIKit
 
-protocol SessionManagerApplicationStateObserver: AnyObject {
-    func sessionManagerDidChangeApplicationState(_ sessionManager: SessionManager)
-    func sessionManagerWillResignActive(_ sessionManager: SessionManager)
-}
-
-protocol SessionManagerPictureInPictureHandler: AnyObject {
-    func stopPresenting(_ session: GeckoSession) -> Bool
-}
-
 final class SessionManager {
     private let sessionSettings: SessionSettingsManager
     private let history: NavigationHistory
@@ -31,13 +22,6 @@ final class SessionManager {
     private var isApplicationForeground = true
     private(set) var isApplicationActive = true
     private var sessionStateBackgroundTask = UIBackgroundTaskIdentifier.invalid
-    private weak var pictureInPictureSession: GeckoSession?
-    private var pendingSessionCleanup: (
-        session: GeckoSession,
-        perform: (SessionManager) -> Void
-    )?
-    weak var applicationStateObserver: SessionManagerApplicationStateObserver?
-    weak var pictureInPictureHandler: SessionManagerPictureInPictureHandler?
     private var externalResponseReferenceCounts: [ObjectIdentifier: Int] = [:]
     private var deferredExternalResponseCleanups: [ObjectIdentifier: (
         session: GeckoSession,
@@ -132,9 +116,6 @@ final class SessionManager {
             return
         }
         session.setFocused(false)
-        if pictureInPictureSession === session {
-            return
-        }
         session.setActive(false)
     }
     
@@ -146,29 +127,18 @@ final class SessionManager {
         }
         isApplicationForeground = isForeground
         for session in sessionsRequestedActive.values {
-            session.setActive(isForeground || pictureInPictureSession === session)
-            if pictureInPictureSession === session {
-                session.setFocused(isForeground)
-            }
+            session.setActive(isForeground)
         }
-        if let pictureInPictureSession,
-           sessionsRequestedActive[ObjectIdentifier(pictureInPictureSession)] == nil {
-            pictureInPictureSession.setFocused(false)
-            pictureInPictureSession.setActive(true)
-        }
-        applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
     }
     
     func applicationWillResignActive() {
         history.flushPendingWrites()
         isApplicationActive = false
-        applicationStateObserver?.sessionManagerWillResignActive(self)
         persistSessionState()
     }
     
     func applicationDidBecomeActive() {
         isApplicationActive = true
-        applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
     }
     
     // MARK: - Session State Persistence
@@ -250,36 +220,6 @@ final class SessionManager {
         deferredExternalResponseCleanups.removeValue(forKey: identifier)
     }
     
-    // MARK: - Picture in Picture
-    
-    func setPictureInPictureSession(_ session: GeckoSession) {
-        pictureInPictureSession = session
-        if !isApplicationForeground {
-            session.setFocused(false)
-        }
-        session.setActive(true)
-    }
-    
-    func pictureInPicturePresentationDidEnd(_ session: GeckoSession) {
-        clearPictureInPictureSession(session)
-        executePendingSessionCleanup(for: session)
-    }
-    
-    private func clearPictureInPictureSession(_ session: GeckoSession) {
-        guard pictureInPictureSession === session else {
-            return
-        }
-        pictureInPictureSession = nil
-        if isApplicationForeground,
-           sessionsRequestedActive[ObjectIdentifier(session)] != nil {
-            session.setActive(true)
-            session.setFocused(true)
-        } else {
-            session.setFocused(false)
-            session.setActive(false)
-        }
-    }
-    
     // MARK: - Session Cleanup
     
     func close(_ session: GeckoSession) {
@@ -311,25 +251,7 @@ final class SessionManager {
             return
         }
         
-        if let pendingSessionCleanup {
-            if pendingSessionCleanup.session !== session {
-                perform(self)
-            }
-            return
-        }
-        pendingSessionCleanup = (session, perform)
-        if pictureInPictureHandler?.stopPresenting(session) != true {
-            executePendingSessionCleanup(for: session)
-        }
-    }
-    
-    private func executePendingSessionCleanup(for session: GeckoSession) {
-        guard let cleanup = pendingSessionCleanup,
-              cleanup.session === session else {
-            return
-        }
-        pendingSessionCleanup = nil
-        cleanup.perform(self)
+        perform(self)
     }
     
     private func closeImmediately(_ session: GeckoSession) {

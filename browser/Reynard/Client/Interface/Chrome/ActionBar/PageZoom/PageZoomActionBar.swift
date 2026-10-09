@@ -128,7 +128,9 @@ final class PageZoomActionBar: UIView {
     
     @available(iOS 26.0, *)
     func setModernContentHidden(_ hidden: Bool) {
-        controlsBackground.effect = hidden ? nil : UIGlassEffect.nonAdaptive(style: .regular)
+        let effect = UIGlassEffect(style: .regular)
+        effect.isInteractive = true
+        controlsBackground.effect = hidden ? nil : effect
         controlsBackground.contentView.alpha = hidden ? 0 : 1
     }
     
@@ -203,9 +205,12 @@ final class PageZoomActionBar: UIView {
         backgroundColor = .clear
         if #available(iOS 26.0, *) {
             backgroundView.isHidden = true
-            controlsBackground.effect = UIGlassEffect.nonAdaptive(style: .regular)
+            setModernContentHidden(false)
             controlsBackground.contentView.backgroundColor = .clear
             controlsBackground.layer.borderWidth = 0
+            controlsBackground.layer.cornerRadius = 0
+            controlsBackground.cornerConfiguration = .capsule()
+            controlsBackground.clipsToBounds = false
             controlsShadowView.layer.shadowOpacity = 0
         }
     }

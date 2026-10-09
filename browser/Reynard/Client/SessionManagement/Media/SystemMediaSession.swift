@@ -10,10 +10,6 @@ import Foundation
 import GeckoView
 import MediaPlayer
 
-protocol SystemMediaSessionObserver: AnyObject {
-    func systemMediaSessionStateDidChange(_ mediaSession: SystemMediaSession)
-}
-
 protocol SystemMediaSessionPlaybackObserver: AnyObject {
     func systemMediaSessionDidActivate(for session: GeckoSession)
     func systemMediaSessionPlaybackStateDidChange(
@@ -35,7 +31,6 @@ final class SystemMediaSession: MediaSessionDelegate {
         var features: MediaSessionFeatures = [.seekForward, .seekBackward, .seekTo]
         var artworkTask: URLSessionDataTask?
         var playbackState = PlaybackState.none
-        var positionState: MediaSessionPositionState?
         
         init(session: GeckoSession) {
             self.session = session
@@ -51,19 +46,11 @@ final class SystemMediaSession: MediaSessionDelegate {
     private var interruptedPlaybackSessions: Set<ObjectIdentifier> = []
     private var preservedPlaybackSessions: Set<ObjectIdentifier> = []
     private var commandTargets: [Any] = []
-    weak var observer: SystemMediaSessionObserver?
     weak var playbackObserver: SystemMediaSessionPlaybackObserver?
     
     struct Snapshot {
         let session: GeckoSession
         let playbackState: PlaybackState
-        let positionState: MediaSessionPositionState?
-        let features: MediaSessionFeatures
-        
-        var supportsSeeking: Bool {
-            return features.contains(.seekTo) ||
-            (features.contains(.seekForward) && features.contains(.seekBackward))
-        }
     }
     
     var selectedSnapshot: Snapshot? {
@@ -73,9 +60,7 @@ final class SystemMediaSession: MediaSessionDelegate {
         }
         return Snapshot(
             session: selectedSession,
-            playbackState: state.playbackState,
-            positionState: state.positionState,
-            features: state.features
+            playbackState: state.playbackState
         )
     }
     
@@ -107,7 +92,6 @@ final class SystemMediaSession: MediaSessionDelegate {
     func onActivated(session: GeckoSession) {
         _ = state(for: session)
         playbackObserver?.systemMediaSessionDidActivate(for: session)
-        notifyStateChanged(for: session)
     }
     
     func onDeactivated(session: GeckoSession) {
@@ -225,7 +209,6 @@ final class SystemMediaSession: MediaSessionDelegate {
             return
         }
         state.playbackState = .none
-        state.positionState = nil
         playbackHistory.removeAll { $0 == identifier }
         
         if activeSession === session {
@@ -236,7 +219,6 @@ final class SystemMediaSession: MediaSessionDelegate {
     
     func onPositionState(session: GeckoSession, state: MediaSessionPositionState) {
         let sessionState = self.state(for: session)
-        sessionState.positionState = state
         sessionState.nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = state.duration
         sessionState.nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = state.position
         sessionState.nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = state.playbackRate
@@ -244,7 +226,6 @@ final class SystemMediaSession: MediaSessionDelegate {
         if activeSession === session {
             nowPlayingCenter.nowPlayingInfo = sessionState.nowPlayingInfo
         }
-        notifyStateChanged(for: session)
     }
     
     func onFeatures(session: GeckoSession, features: MediaSessionFeatures) {
@@ -254,7 +235,6 @@ final class SystemMediaSession: MediaSessionDelegate {
         if activeSession === session {
             apply(features)
         }
-        notifyStateChanged(for: session)
     }
     
     private func state(for session: GeckoSession) -> SessionState {
@@ -268,19 +248,9 @@ final class SystemMediaSession: MediaSessionDelegate {
         return state
     }
     
-    private func notifyStateChanged(for session: GeckoSession) {
-        guard selectedSession === session else {
-            return
-        }
-        observer?.systemMediaSessionStateDidChange(self)
-    }
-    
     private func notifyPlaybackStateChanged(for session: GeckoSession) {
         let playbackState = sessionStates[ObjectIdentifier(session)]?.playbackState ?? .none
         playbackObserver?.systemMediaSessionPlaybackStateDidChange(playbackState, for: session)
-        if selectedSession === session {
-            observer?.systemMediaSessionStateDidChange(self)
-        }
     }
     
     private func activate(_ session: GeckoSession, state: SessionState) {

@@ -51,7 +51,6 @@ final class BrowserPreferences {
             key("JITSettings", "isJITEnabled"): false,
             
             // Experimental
-            key("ExperimentalSettings", "isVideoPictureInPictureEnabled"): false,
             
             // Compatibility
             key("CompatibilitySettings", "androidUserAgentDomains"): [],
@@ -1079,18 +1078,6 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(hasPairingFile && newValue, forSetting: "JITSettings", key: "isJITEnabled")
-            }
-        }
-    }
-    
-    // MARK: - Experimental
-    struct ExperimentalSettings {
-        static var isVideoPictureInPictureEnabled: Bool {
-            get {
-                return prefs.bool(forSetting: "ExperimentalSettings", key: "isVideoPictureInPictureEnabled")
-            }
-            set {
-                prefs.set(newValue, forSetting: "ExperimentalSettings", key: "isVideoPictureInPictureEnabled")
             }
         }
     }

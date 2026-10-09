@@ -1,13 +1,8 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..5df7c8977cd0 100644
+index e68fca9134c0..5dbbe142d4f3 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
-@@ -17,15 +17,73 @@
- #  define MOZ_END_EXTERN_C
- #endif
- 
-+#import <AVFoundation/AVSampleBufferDisplayLayer.h>
- #import <Foundation/Foundation.h>
+@@ -21,11 +21,68 @@
  #import <UIKit/UIKit.h>
  #import <xpc/xpc.h>
  
@@ -76,7 +71,7 @@ index e68fca9134c0..5df7c8977cd0 100644
  @end
  
  @protocol GeckoProcessExtension <NSObject>
-@@ -33,38 +91,72 @@
+@@ -33,38 +90,69 @@
  @end
  
  @protocol EventCallback <NSObject>
@@ -117,9 +112,6 @@ index e68fca9134c0..5df7c8977cd0 100644
 +// Interaction
 +- (void)setInteractionDelegate:
 +    (nullable id<GeckoViewInteractionDelegate>)delegate;
-+
-+// PiP
-+- (nullable AVSampleBufferDisplayLayer*)pictureInPictureDisplayLayer;
 +
 +// Layout
 +- (void)setDynamicToolbarMaxHeight:(CGFloat)height minHeight:(CGFloat)minHeight;

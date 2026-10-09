@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/NativeLayerCA.mm b/gfx/layers/NativeLayerCA.mm
-index 5760a816612b..e2cfd0f831ef 100644
+index 5760a816612b..b7fdf83fc0eb 100644
 --- a/gfx/layers/NativeLayerCA.mm
 +++ b/gfx/layers/NativeLayerCA.mm
 @@ -9,6 +9,9 @@
@@ -12,15 +12,7 @@ index 5760a816612b..e2cfd0f831ef 100644
  #import <AVFoundation/AVFoundation.h>
  #import <QuartzCore/QuartzCore.h>
  
-@@ -167,6 +170,7 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
- 
-   [mOnscreenRootCALayer release];
-   [mOffscreenRootCALayer release];
-+  [mPictureInPictureSourceLayer release];
- }
- 
- already_AddRefed<NativeLayer> NativeLayerRootCA::CreateLayer(
-@@ -244,6 +248,15 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -244,6 +247,15 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
    }
  }
  
@@ -36,7 +28,7 @@ index 5760a816612b..e2cfd0f831ef 100644
  void NativeLayerRootCA::SetBackingScale(float aBackingScale) {
    MutexAutoLock lock(mMutex);
  
-@@ -275,6 +288,16 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -275,6 +287,16 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
  }
  
  bool NativeLayerRootCA::CommitToScreen() {
@@ -53,7 +45,7 @@ index 5760a816612b..e2cfd0f831ef 100644
    MutexAutoLock lock(mMutex);
  
    if (!NS_IsMainThread() && mOffMainThreadCommitsSuspended) {
-@@ -287,6 +310,10 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -287,6 +309,10 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
                         mWindowIsFullscreen);
    mMutatedOnscreenLayerStructure = false;
  
@@ -64,19 +56,7 @@ index 5760a816612b..e2cfd0f831ef 100644
    mCommitPending = false;
  
    if (StaticPrefs::gfx_webrender_debug_dump_native_layer_tree_to_file()) {
-@@ -320,6 +347,11 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
-     EmitTelemetryForVideoLowPower(videoLowPower);
-   }
- 
-+  if (UpdatePictureInPictureSource(lock)) {
-+    MutexAutoUnlock unlock(mMutex);
-+    DispatchPictureInPictureSourceChanged();
-+  }
-+
-   return true;
- }
- 
-@@ -428,6 +460,19 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -428,6 +454,19 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
    if (mustRebuild) {
      aRootCALayer.sublayers = sublayers;
    }
@@ -96,18 +76,7 @@ index 5760a816612b..e2cfd0f831ef 100644
  }
  
  SnapshotterCADelegate::~SnapshotterCADelegate() = default;
-@@ -929,6 +974,10 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-     return false;
-   }
- 
-+  if (IsPictureInPictureEligibleSurface(aProofOfLock)) {
-+    return true;
-+  }
-+
-   // DRM video is supported in macOS 10.15 and beyond, and such video must use
-   // a specialized video layer.
-   if (mIsDRM) {
-@@ -1527,6 +1576,14 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1527,6 +1566,14 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    return updateSucceeded;
  }
  
@@ -122,7 +91,7 @@ index 5760a816612b..e2cfd0f831ef 100644
  CALayer* NativeLayerCA::UnderlyingCALayer(WhichRepresentation aRepresentation) {
    MutexAutoLock lock(mMutex);
    return GetRepresentation(aRepresentation).UnderlyingCALayer();
-@@ -1539,7 +1596,8 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1539,7 +1586,8 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    AVSampleBufferDisplayLayer* videoLayer =
        (AVSampleBufferDisplayLayer*)mContentCALayer;
  
@@ -132,7 +101,7 @@ index 5760a816612b..e2cfd0f831ef 100644
      if (videoLayer.requiresFlushToResumeDecoding) {
        [videoLayer flush];
      }
-@@ -1645,6 +1703,11 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1645,6 +1693,11 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    if (osValue != noErr) {
      MOZ_ASSERT(sampleBuffer == nullptr,
                 "Failed call shouldn't allocate memory.");
@@ -144,64 +113,3 @@ index 5760a816612b..e2cfd0f831ef 100644
  #ifdef NIGHTLY_BUILD
      if (StaticPrefs::gfx_core_animation_specialize_video_log()) {
        NSLog(@"VIDEO_LOG: EnqueueSurface failed on allocating sample buffer.");
-@@ -1713,6 +1776,9 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-     bool aSpecializeVideo, const CFTypeRefPtr<IOSurfaceRef>& aFrontSurface,
-     const Maybe<gfx::DeviceColor>& aColor, bool aIsVideo, bool aIsDRM,
-     bool aIsHDR) {
-+  bool useSpecializedVideo =
-+      aSpecializeVideo && !mPictureInPictureFailureLatched;
-+
-   // If we have an OnlyVideo update, handle it and early exit.
-   if (aUpdate == UpdateType::OnlyVideo) {
-     // If we don't have any updates to do, exit early with success. This is
-@@ -1726,13 +1792,14 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-                "Shouldn't attempt a OnlyVideo update in this case.");
- 
-     bool updateSucceeded = false;
--    if (aSpecializeVideo) {
-+    if (useSpecializedVideo) {
-       IOSurfaceRef surface = aFrontSurface.get();
-       updateSucceeded = EnqueueSurface(surface, aIsHDR);
- 
-       if (updateSucceeded) {
-         mMutatedFrontSurface = false;
-       } else {
-+        mPictureInPictureFailureLatched = true;
-         // Set mMutatedSpecializeVideo, which will ensure that the next update
-         // will rebuild the video layer.
-         mMutatedSpecializeVideo = true;
-@@ -1793,7 +1860,7 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-       mRoundedClipCALayer.backgroundColor =
-           CGColorCreateForDeviceColor(*aColor);
-     } else {
--      if (aSpecializeVideo) {
-+      if (useSpecializedVideo) {
- #ifdef NIGHTLY_BUILD
-         if (aIsVideo &&
-             StaticPrefs::gfx_core_animation_specialize_video_log()) {
-@@ -1842,7 +1909,7 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-     }
-   }
- 
--  if (aSpecializeVideo && mMutatedIsDRM) {
-+  if (useSpecializedVideo && mMutatedIsDRM) {
-     ((AVSampleBufferDisplayLayer*)mContentCALayer).preventsCapture = aIsDRM;
-   }
- 
-@@ -2028,7 +2095,7 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-     // *next* update will clear the video layer and setup a regular layer.
- 
-     IOSurfaceRef surface = aFrontSurface.get();
--    if (aSpecializeVideo) {
-+    if (useSpecializedVideo) {
-       // If we just rebuilt our layer, ensure the first frame is visible by
-       // forcing the layer contents to display that frame. Our call to
-       // enqueueSampleBuffer will handle future async updates to the layer;
-@@ -2044,6 +2111,7 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
-         // Set mMutatedSpecializeVideo, which will ensure that the next update
-         // will rebuild the video layer.
-         mMutatedSpecializeVideo = true;
-+        mPictureInPictureFailureLatched = true;
- #ifdef NIGHTLY_BUILD
-         if (StaticPrefs::gfx_core_animation_specialize_video_log()) {
-           NSLog(@"VIDEO_LOG: EnqueueSurface failed in All update.");

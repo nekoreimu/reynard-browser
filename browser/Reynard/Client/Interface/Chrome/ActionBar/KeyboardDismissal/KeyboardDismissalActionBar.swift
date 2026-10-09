@@ -59,10 +59,11 @@ final class KeyboardDismissalActionBar: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         if #available(iOS 26.0, *) {
-            backgroundView.effect = UIGlassEffect.nonAdaptive(style: .regular)
+            let effect = UIGlassEffect(style: .regular)
+            effect.isInteractive = true
+            backgroundView.effect = effect
             backgroundView.contentView.backgroundColor = .clear
-            backgroundView.layer.cornerRadius = UX.modernHeight / 2
-            backgroundView.clipsToBounds = true
+            backgroundView.cornerConfiguration = .capsule()
             doneButton.setTitle(nil, for: .normal)
             doneButton.setImage(UIImage(systemName: "checkmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: UX.modernSymbolSize)), for: .normal)
             doneButton.tintColor = .label
@@ -72,7 +73,7 @@ final class KeyboardDismissalActionBar: UIView {
     
     private func configureHierarchy() {
         addSubview(backgroundView)
-        addSubview(doneButton)
+        backgroundView.contentView.addSubview(doneButton)
     }
     
     private func configureConstraints() {
@@ -82,9 +83,9 @@ final class KeyboardDismissalActionBar: UIView {
                 backgroundView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -UX.modernInset),
                 backgroundView.centerYAnchor.constraint(equalTo: centerYAnchor),
                 backgroundView.heightAnchor.constraint(equalToConstant: UX.modernHeight),
-                doneButton.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor),
-                doneButton.topAnchor.constraint(equalTo: backgroundView.topAnchor),
-                doneButton.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
+                doneButton.trailingAnchor.constraint(equalTo: backgroundView.contentView.trailingAnchor),
+                doneButton.topAnchor.constraint(equalTo: backgroundView.contentView.topAnchor),
+                doneButton.bottomAnchor.constraint(equalTo: backgroundView.contentView.bottomAnchor),
                 doneButton.widthAnchor.constraint(equalToConstant: UX.modernHeight + UX.modernInset),
             ])
             return

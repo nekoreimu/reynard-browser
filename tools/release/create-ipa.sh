@@ -70,4 +70,13 @@ if [ "$BUILD_TYPE" != "normal" ]; then
 	ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
 fi
 
+if [ "$BUILD_TYPE" = "--jailbroken" ]; then
+	# Since releases are now built on GitHub Actions, and it does not have proper signing yet (i believe it
+	# requires a paid Apple developer account because of using the free one we would have to replace the
+	# provisioning profile once every 7 days?). So this is a workaround for the issue where libhooker-based
+	# jailbreaks just refuse to load the adhoc signed dylib and cause the app to crash.
+	curl --location --output "Reynard-0.10.0.ipa" "https://github.com/minh-ton/reynard-browser/releases/download/0.10.0/Reynard.ipa" # 0.10.0 is the last one that is properly signed
+	unzip -p "Reynard-0.10.0.ipa" "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib" > "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib"
+fi
+
 zip -r "../$OUTPUT_NAME" Payload -x "._*" -x ".DS_Store" -x "__MACOSX"

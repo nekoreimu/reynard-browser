@@ -108,10 +108,9 @@ final class TabOverviewPresentation {
     // MARK: - Selection
     
     func prepareDismissSelection(to index: Int, mode: TabMode, previewImage: UIImage?) {
-        let selectedIndex = dataSource.selectedMode == mode ? dataSource.selectedIndex : nil
         dismissalTargetTabIndex = index
         dismissalTargetTabMode = mode
-        pendingSelectionTabIndex = index == selectedIndex ? nil : index
+        pendingSelectionTabIndex = index
         pendingSelectionTabMode = mode
         pendingSelectionPreviewImage = previewImage
     }
@@ -901,9 +900,7 @@ final class TabOverviewPresentation {
             pendingSelectionPreviewImage = nil
         }
         
-        let selectedIndex = pendingSelectionTabMode == dataSource.selectedMode ? dataSource.selectedIndex : nil
         guard let target = pendingSelectionTabIndex,
-              target != selectedIndex,
               let mode = pendingSelectionTabMode else {
             return
         }

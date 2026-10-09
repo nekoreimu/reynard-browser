@@ -150,14 +150,6 @@ public class GeckoSession {
     }
     public lazy var mediaSession = MediaSession(session: self)
     private lazy var autofillHandler = GeckoAutofillHandler(session: self)
-    private lazy var pictureInPictureHandler = newPictureInPictureHandler(self)
-    public var pictureInPictureDelegate: PictureInPictureDelegate? {
-        get { pictureInPictureHandler.delegate }
-        set { pictureInPictureHandler.delegate = newValue }
-    }
-    public var pictureInPictureDisplayLayer: AVSampleBufferDisplayLayer? {
-        return pictureInPictureHandler.displayLayer
-    }
     
     public func notifyScreenOrientationChanged(to orientation: UIInterfaceOrientation) {
         window?.updateScreenOrientation(orientation.rawValue)
@@ -179,7 +171,6 @@ public class GeckoSession {
         selectionActionHandler,
         mediaSessionHandler,
         autofillHandler,
-        pictureInPictureHandler,
     ]
     
     // MARK: - Lifecycle
@@ -276,7 +267,6 @@ public class GeckoSession {
         selectionActionDelegate = nil
         mediaSessionDelegate?.onDeactivated(session: self)
         mediaSessionDelegate = nil
-        pictureInPictureDelegate = nil
         
         guard let window else {
             return
