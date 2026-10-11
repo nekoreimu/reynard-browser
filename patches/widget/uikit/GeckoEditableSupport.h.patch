@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.h b/widget/uikit/GeckoEditableSupport.h
 new file mode 100644
-index 000000000000..0dd7f060d937
+index 000000000000..852759e0f418
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.h
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,168 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -66,6 +66,7 @@ index 000000000000..0dd7f060d937
 +  UITextInteraction* mReadOnlyTextInteraction;
 +  id mTextInteractionAssistantDelegate;
 +  BOOL mShowingTextStyleOptions;
++  BOOL mPendingCaretMenu;
 +  NSTimer* mTextAutoscrollTimer;
 +  CGPoint mTextAutoscrollPoint;
 +  CGPoint mFloatingCursorPoint;

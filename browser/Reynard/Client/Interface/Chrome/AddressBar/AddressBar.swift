@@ -108,6 +108,7 @@ final class AddressBar: UIView {
     private weak var searchDelegate: AddressBarSearchDelegate?
     
     private var editingState: EditingState = .inactive
+    private var usesAutomaticFocusLayout = false
     private var loadingState: LoadingState = .idle
     private var position: BrowserChromePosition = .bottom
     private var chromeMode: BrowserChromeMode = .phone
@@ -465,26 +466,50 @@ final class AddressBar: UIView {
     }
     
     func setDismissButtonVisible(_ visible: Bool, animated: Bool) {
-        backgroundTrailingFullConstraint.isActive = !visible
-        backgroundTrailingFocusedConstraint.isActive = visible
-        if visible {
+        let showsDismissButton = visible && !usesAutomaticFocusLayout
+        
+        backgroundTrailingFocusedConstraint.isActive = false
+        backgroundTrailingFullConstraint.isActive = !showsDismissButton
+        backgroundTrailingFocusedConstraint.isActive = showsDismissButton
+        
+        if showsDismissButton {
             dismissButton.isHidden = false
         }
+        
         let animations = {
-            self.dismissButton.alpha = visible ? 1 : 0
+            self.dismissButton.alpha = showsDismissButton ? 1 : 0
             self.layoutIfNeeded()
         }
         let completion: (Bool) -> Void = { _ in
-            if !visible {
+            if !self.backgroundTrailingFocusedConstraint.isActive {
                 self.dismissButton.isHidden = true
             }
         }
+        
         if animated {
             UIView.animate(withDuration: UX.addressBarDismissButtonAnimationDuration, animations: animations, completion: completion)
         } else {
             animations()
             completion(true)
         }
+    }
+    
+    // MARK: - Keyboard Focus
+    
+    func focusForHardwareKeyboard() {
+        usesAutomaticFocusLayout = true
+        if !textField.becomeFirstResponder() {
+            usesAutomaticFocusLayout = false
+        }
+    }
+    
+    func restoreEditingLayout() {
+        guard usesAutomaticFocusLayout else {
+            return
+        }
+        
+        usesAutomaticFocusLayout = false
+        setDismissButtonVisible(textField.isFirstResponder, animated: true)
     }
     
     // MARK: - Text And Autocomplete
@@ -1012,6 +1037,8 @@ final class AddressBar: UIView {
     
     @objc
     private func handleBarTap() {
+        restoreEditingLayout()
+        
         if textField.isFirstResponder {
             if isShowingOverlay {
                 handleOverlayTap()
@@ -1462,6 +1489,8 @@ extension AddressBar: UITextFieldDelegate {
     }
     
     func textFieldDidEndEditing(_ textField: UITextField) {
+        usesAutomaticFocusLayout = false
+        
         if editingState != .composing {
             editingState = .inactive
         }
@@ -1496,6 +1525,7 @@ extension AddressBar: UIGestureRecognizerDelegate {
         }
         
         if touch.view?.isDescendant(of: textField) == true {
+            restoreEditingLayout()
             return false
         }
         

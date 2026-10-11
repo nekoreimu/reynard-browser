@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/nsClipboard.mm b/widget/uikit/nsClipboard.mm
 new file mode 100644
-index 000000000000..6bea819b2175
+index 000000000000..db35e4638780
 --- /dev/null
 +++ b/widget/uikit/nsClipboard.mm
-@@ -0,0 +1,405 @@
+@@ -0,0 +1,433 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -24,6 +24,7 @@ index 000000000000..6bea819b2175
 +#include "nsIInputStream.h"
 +#include "nsISupportsPrimitives.h"
 +#include "nsPrimitiveHelpers.h"
++#include "nsStringStream.h"
 +
 +using namespace mozilla;
 +
@@ -349,6 +350,29 @@ index 000000000000..6bea819b2175
 +    return PrimitiveFromNSString(aFlavor, html);
 +  }
 +
++  if (aFlavor.EqualsLiteral(kPNGImageMime)) {
++    NSData* png = [pasteboard dataForPasteboardType:kUIKitClipboardPNGType];
++    if (!png && pasteboard.hasImages) {
++      png = UIImagePNGRepresentation(pasteboard.image);
++    }
++    if (!png) {
++      return nsCOMPtr<nsISupports>{};
++    }
++    if (aThreshold && png.length > aThreshold) {
++      return Err(NS_ERROR_CLIPBOARD_TOO_BIG);
++    }
++
++    nsCOMPtr<nsIInputStream> stream;
++    nsresult rv = NS_NewByteInputStream(
++        getter_AddRefs(stream),
++        Span(static_cast<const char*>(png.bytes), [png length]),
++        NS_ASSIGNMENT_COPY);
++    if (NS_FAILED(rv)) {
++      return Err(rv);
++    }
++    return nsCOMPtr<nsISupports>(std::move(stream));
++  }
++
 +  return nsCOMPtr<nsISupports>{};
 +}
 +
@@ -404,6 +428,10 @@ index 000000000000..6bea819b2175
 +          pasteboard.hasImages) {
 +        return true;
 +      }
++    }
++
++    if (flavor.EqualsLiteral(kPNGImageMime) && pasteboard.hasImages) {
++      return true;
 +    }
 +  }
 +

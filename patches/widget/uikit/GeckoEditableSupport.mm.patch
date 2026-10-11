@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..4a4a7ad774f9
+index 000000000000..f1da48a3a27a
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4146 @@
+@@ -0,0 +1,4189 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -143,6 +143,7 @@ index 000000000000..4a4a7ad774f9
 +@protocol GeckoTextEditMenuAssistant <NSObject>
 +- (id)menuInteraction API_AVAILABLE(ios(16.0));
 +- (BOOL)_editMenuIsVisible API_AVAILABLE(ios(16.0));
++- (BOOL)_editMenuIsVisibleOrDismissedRecently API_AVAILABLE(ios(16.0));
 +@end
 +
 +@protocol GeckoTextInteractionAssistant <GeckoTextInteractionCommands>
@@ -151,6 +152,7 @@ index 000000000000..4a4a7ad774f9
 +- (void)deactivateSelection;
 +- (void)selectionChanged;
 +- (void)selectAll:(id)aSender;
++- (UITextRange*)rangeForTextReplacement:(UITextRange*)aRange;
 +- (void)scheduleReplacements;
 +- (void)showSelectionCommandsForSecondaryClickAtPoint:(CGPoint)aPoint;
 +- (void)beginFloatingCursorAtPoint:(CGPoint)aPoint;
@@ -1534,9 +1536,47 @@ index 000000000000..4a4a7ad774f9
 +  }
 +}
 +
++- (UITextRange*)rangeForTextReplacement:(UITextRange*)aRange {
++  if (@available(iOS 17.0, *)) {
++    // Keep the tap position so a caret tap can open the edit menu.
++    return aRange;
++  }
++
++  return [mAssistant rangeForTextReplacement:aRange];
++}
++
 +- (BOOL)scheduleReplacementsForRange:(UITextRange*)aRange
 +                         withOptions:(NSUInteger)aOptions {
-+  // Keep selection taps on the edit menu. Show replacements only on request.
++  if (@available(iOS 17.0, *)) {
++    if (!aRange || !aRange.empty) {
++      return NO;
++    }
++
++    id<UITextInput> document = TextSelectionForAssistant(mAssistant).document;
++    UITextRange* selection = document.selectedTextRange;
++    if (!selection || !selection.empty) {
++      return NO;
++    }
++
++    if ([document comparePosition:aRange.start
++                       toPosition:selection.start] != NSOrderedSame) {
++      return NO;
++    }
++
++    // UIKit hides an open menu before this callback.
++    id<GeckoTextEditMenuAssistant> menuAssistant =
++        [mAssistant _editMenuAssistant];
++    if ([menuAssistant respondsToSelector:
++                           @selector(_editMenuIsVisibleOrDismissedRecently)] &&
++        [menuAssistant _editMenuIsVisibleOrDismissedRecently]) {
++      return YES;
++    }
++
++    // The tap's selection change would cancel a menu opened here.
++    ((ChildView*)document)->mEditable.mPendingCaretMenu = YES;
++    return YES;
++  }
++
 +  return NO;
 +}
 +
@@ -2030,6 +2070,8 @@ index 000000000000..4a4a7ad774f9
 +}
 +
 +- (void)interactionWillBegin:(UITextInteraction*)aInteraction {
++  mEditable.mPendingCaretMenu = NO;
++
 +  if ([self isEditable] && mGeckoChild->IsSoftwareKeyboardSuppressed() &&
 +      !mGeckoChild->IsVirtualKeyboardDisabled()) {
 +    // Native gestures may not send a click to Gecko. Reopen the keyboard for
@@ -2048,7 +2090,8 @@ index 000000000000..4a4a7ad774f9
 +  [self cancelAutoscroll];
 +  [self refreshSelectionUI];
 +
-+  if ([self hasSelection]) {
++  if ([self hasSelection] || mEditable.mPendingCaretMenu) {
++    mEditable.mPendingCaretMenu = NO;
 +    [[self selectionCommandController] showSelectionCommands];
 +  }
 +}

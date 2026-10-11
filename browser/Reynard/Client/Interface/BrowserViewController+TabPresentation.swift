@@ -128,6 +128,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     
     func tabOverviewDidFinishDismissal() {
         toolbarController.unlock(for: .tabOverview)
+        requestHomepageAddressBarFocus()
         requestContentKeyboardFocus()
     }
     

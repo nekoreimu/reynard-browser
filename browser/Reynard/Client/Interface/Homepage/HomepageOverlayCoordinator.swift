@@ -63,7 +63,18 @@ final class HomepageOverlayCoordinator {
     
     // MARK: - State
     
+    func isHomepageTab(_ tab: Tab) -> Bool {
+        guard showsHomepageForBlankTabs || tab.state.showsStartupHomepage else {
+            return false
+        }
+        
+        return isBlankTab(tab)
+    }
+    
     func updatePresentation(animated: Bool) {
+        let showsHomepage = delegate?.homepageSelectedTab.map(isHomepageTab) == true
+        delegate?.homepageContentView.setWebVisibility(showsHomepage ? .hidden : .visible)
+        
         guard let presentation = homepagePresentation else {
             dismiss(animated: animated)
             return
@@ -86,8 +97,7 @@ final class HomepageOverlayCoordinator {
     
     func tabOverviewWillPresent() {
         if let tab = delegate?.homepageSelectedTab,
-           (showsHomepageForBlankTabs || tab.state.showsStartupHomepage),
-           isBlankTab(tab) {
+           isHomepageTab(tab) {
             return
         }
         
@@ -101,10 +111,6 @@ final class HomepageOverlayCoordinator {
     }
     
     // MARK: - Thumbnails
-    
-    func needsHomepageThumbnail(for tab: Tab) -> Bool {
-        return (showsHomepageForBlankTabs || tab.state.showsStartupHomepage) && isBlankTab(tab)
-    }
     
     func prepareHomepageForNewTab(mode: TabMode) {
         guard let delegate,
@@ -136,7 +142,7 @@ final class HomepageOverlayCoordinator {
     
     func previewImage(for tab: Tab) -> UIImage? {
         guard let delegate,
-              needsHomepageThumbnail(for: tab),
+              isHomepageTab(tab),
               let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
             return nil
         }
@@ -237,8 +243,7 @@ final class HomepageOverlayCoordinator {
         }
         
         if let tab = delegate.homepageSelectedTab,
-           (showsHomepageForBlankTabs || tab.state.showsStartupHomepage),
-           isBlankTab(tab) {
+           isHomepageTab(tab) {
             return HomepagePresentation(
                 host: .embedded,
                 contentMode: embeddedContentMode(layout: delegate.homepageLayout),

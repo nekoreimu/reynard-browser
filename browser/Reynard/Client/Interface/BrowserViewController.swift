@@ -217,15 +217,19 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
                 shouldRestoreContentFocus = false
                 requestContentKeyboardFocus()
             }
+            
+            requestHomepageAddressBarFocus()
         }
     }
     
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        
+        let showsHomepage = tabManager.selectedTab.map(homepageOverlayCoordinator.isHomepageTab) ?? false
         toolbarController.updateLayout(
             chromeMode: browserLayout.chromeMode,
             isToolbarEnabled: !isShowingFullscreenMedia,
-            extendsContentBehindToolbar: tabManager.selectedTab.map(homepageOverlayCoordinator.needsHomepageThumbnail(for:)) ?? false
+            extendsContentBehindToolbar: showsHomepage
         )
         homepageOverlayCoordinator.updateVisibleContentInsets()
         invalidateNavigationThumbnailsIfNeeded()
@@ -884,6 +888,35 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     // MARK: - Keyboard
     
+    func requestHomepageAddressBarFocus() {
+        let expectedSession = tabManager.selectedTab?.session
+        
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let tab = tabManager.selectedTab,
+                  tab.session === expectedSession else {
+                return
+            }
+            
+            guard homepageOverlayCoordinator.isHomepageTab(tab),
+                  tab.session.isInHardwareKeyboardMode() else {
+                return
+            }
+            
+            guard !tabOverview.isPresented,
+                  !tabOverview.isTransitionRunning else {
+                return
+            }
+            
+            guard !browserChrome.isAddressBarEditing,
+                  presentedControllerInHierarchy == nil else {
+                return
+            }
+            
+            browserChrome.addressBar.focusForHardwareKeyboard()
+        }
+    }
+    
     func requestContentKeyboardFocus(for expectedSession: GeckoSession? = nil) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -934,6 +967,12 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             return
         }
         
+        let isHardwareKeyboardMode = tabManager.selectedTab?.session.isInHardwareKeyboardMode() == true
+        
+        if !isHardwareKeyboardMode {
+            browserChrome.addressBar.restoreEditingLayout()
+        }
+        
         let keyboardFrame = view.convert(frameValue.cgRectValue, from: nil)
         let keyboardOverlap = max(0, view.bounds.maxY - keyboardFrame.minY)
         let keyboardInset = max(0, keyboardOverlap - view.safeAreaInsets.bottom)
@@ -945,8 +984,8 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         let shouldAdjustForKeyboard = keyboardInset > 0
         && !isFloatingKeyboard
         && !tabOverview.isPresented
-        && tabManager.selectedTab?.session.isInHardwareKeyboardMode() != true
-
+        && !isHardwareKeyboardMode
+        
         let presentedController = presentedControllerInHierarchy
         let shouldRelocateInput = shouldAdjustForKeyboard
         && !searchOverlayCoordinator.isFocused

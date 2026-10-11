@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..aa1dae602b84
+index 000000000000..a1463181f0dc
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,336 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -99,6 +99,10 @@ index 000000000000..aa1dae602b84
 +- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches {
 +  NSMutableSet<UITouch*>* directTouches = [NSMutableSet set];
 +  for (UITouch* touch in touches) {
++    if (touch.view != mView) {
++      continue;
++    }
++
 +    if (!IsIndirectPointerTouch(touch) && touch.type != UITouchTypePencil) {
 +      [directTouches addObject:touch];
 +    }
@@ -280,8 +284,6 @@ index 000000000000..aa1dae602b84
 +@implementation ChildView (Touch)
 +
 +- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-+  NSSet<UITouch*>* directTouches =
-+      [mTouchSupport directTouchesFromTouches:touches];
 +  BOOL hasDirectTouch = NO;
 +  for (UITouch* touch in touches) {
 +    if (touch.type == UITouchTypeDirect) {
@@ -306,7 +308,7 @@ index 000000000000..aa1dae602b84
 +  if (touches.count > 0) {
 +    BOOL hasPencilTouch =
 +        [mPencilSupport pencilTouchesFromTouches:touches].count > 0;
-+    [self setSelectionHandlesVisible:directTouches.count > 0 || hasPencilTouch];
++    [self setSelectionHandlesVisible:hasDirectTouch || hasPencilTouch];
 +  }
 +
 +  [super touchesBegan:touches withEvent:event];
