@@ -302,6 +302,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         bottomConstraint.isActive = true
         webContentBottomConstraint = bottomConstraint
         webContentView.extendPageBackground(from: topAnchor, to: bottomAnchor)
+        webContentView.positionErrorLabel(below: self.topAnchor)
         [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
             NSLayoutConstraint.activate([
                 contentView.topAnchor.constraint(equalTo: topAnchor),
@@ -325,7 +326,8 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
             top: resizesPageWithToolbar ? 0 : -toolbarTopOffset,
             bottom: resizesPageWithToolbar ? 0 : contentBottomOffset,
             topInset: layoutTopInset,
-            bottomInset: contentBottomInset
+            bottomInset: contentBottomInset,
+            contentTranslationY: transform.ty
         )
     }
     

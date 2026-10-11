@@ -1,0 +1,31 @@
+diff --git a/dom/events/EventStateManager.h b/dom/events/EventStateManager.h
+index 3aab86bc7153..99afe20a9d7a 100644
+--- a/dom/events/EventStateManager.h
++++ b/dom/events/EventStateManager.h
+@@ -543,6 +543,11 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
+   // tried to start a drag.
+   void StopTrackingDragGesture(bool aClearInChildProcesses);
+ 
++  MOZ_CAN_RUN_SCRIPT void StartNativeDragGesture(WidgetMouseEvent& aEvent,
++                                                 nsIFrame* aTargetFrame);
++
++  MOZ_CAN_RUN_SCRIPT void ContinueNativeDragGesture();
++
+   /**
+    * Return the last "mouseover" (or next "mouseout"), the last deepest
+    * "mouseenter" (or next deepest "mouseleave") targets.
+@@ -1223,10 +1228,13 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
+    * @param aMouseOrTouchOrPointerEvent eMouseMove, eTouchMove, ePointerMove or
+    * ePointerDown event. StopPropagation() will be called if new drag session
+    * starts by this call.
++   * @param aIgnoreDragThreshold Don't check how far the pointer moved if the
++   * native view already recognized the drag.
+    */
+   MOZ_CAN_RUN_SCRIPT void GenerateDragGesture(
+       nsPresContext* aPresContext,
+-      WidgetInputEvent& aMouseOrTouchOrPointerEvent);
++      WidgetInputEvent& aMouseOrTouchOrPointerEvent,
++      bool aIgnoreDragThreshold = false);
+ 
+   /**
+    * Try to dispatch ePointerCancel for aSourceEvent to aTargetContent.

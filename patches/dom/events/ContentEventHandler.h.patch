@@ -1,0 +1,66 @@
+diff --git a/dom/events/ContentEventHandler.h b/dom/events/ContentEventHandler.h
+index e383b6c7c97d..2b0e46946def 100644
+--- a/dom/events/ContentEventHandler.h
++++ b/dom/events/ContentEventHandler.h
+@@ -11,6 +11,7 @@
+ #include "mozilla/RangeBoundary.h"
+ #include "mozilla/dom/Selection.h"
+ #include "mozilla/dom/Text.h"
++#include "mozilla/gfx/Matrix.h"
+ #include "nsCOMPtr.h"
+ #include "nsIFrame.h"
+ #include "nsINode.h"
+@@ -22,6 +23,9 @@ struct nsRect;
+ 
+ namespace mozilla {
+ 
++struct NativeTextInputRequest;
++struct NativeTextInputReply;
++
+ namespace dom {
+ class Element;
+ }  // namespace dom
+@@ -128,6 +132,9 @@ class MOZ_STACK_CLASS ContentEventHandler {
+ 
+   explicit ContentEventHandler(nsPresContext* aPresContext);
+ 
++  MOZ_CAN_RUN_SCRIPT nsresult QueryNativeTextInput(
++      const NativeTextInputRequest& aRequest, NativeTextInputReply& aReply);
++
+   // Handle aEvent in the current process.
+   MOZ_CAN_RUN_SCRIPT nsresult
+   HandleQueryContentEvent(WidgetQueryContentEvent* aEvent);
+@@ -147,7 +154,8 @@ class MOZ_STACK_CLASS ContentEventHandler {
+   OnQueryTextRectArray(WidgetQueryContentEvent* aEvent);
+   // eQueryEditorRect event handler
+   MOZ_CAN_RUN_SCRIPT nsresult
+-  OnQueryEditorRect(WidgetQueryContentEvent* aEvent);
++  OnQueryEditorRect(WidgetQueryContentEvent* aEvent,
++                    NativeTextInputReply* aNativeGeometry = nullptr);
+   // eQueryContentState event handler
+   MOZ_CAN_RUN_SCRIPT nsresult
+   OnQueryContentState(WidgetQueryContentEvent* aEvent);
+@@ -165,7 +173,9 @@ class MOZ_STACK_CLASS ContentEventHandler {
+   OnQueryDropTargetHittest(WidgetQueryContentEvent* aEvent);
+ 
+   // NS_SELECTION_* event
+-  MOZ_CAN_RUN_SCRIPT nsresult OnSelectionEvent(WidgetSelectionEvent* aEvent);
++  MOZ_CAN_RUN_SCRIPT nsresult
++  OnSelectionEvent(WidgetSelectionEvent* aEvent,
++                   ScrollFlags aScrollFlags = ScrollFlags::None);
+ 
+  protected:
+   RefPtr<dom::Document> mDocument;
+@@ -472,7 +482,11 @@ class MOZ_STACK_CLASS ContentEventHandler {
+   nsresult AdjustCollapsedRangeMaybeIntoTextNode(SimpleRange& aSimpleRange);
+   // Convert the frame relative offset to be relative to the root frame of the
+   // root presContext (but still measured in appUnits of aFrame's presContext).
+-  nsresult ConvertToRootRelativeOffset(nsIFrame* aFrame, nsRect& aRect);
++  // When requested, also return the transform in device pixels.
++  nsresult ConvertToRootRelativeOffset(
++      nsIFrame* aFrame, nsRect& aRect,
++      Maybe<gfx::Matrix>* aTransform = nullptr);
++
+   // Expand aXPOffset to the nearest offset in cluster boundary. aForward is
+   // true, it is expanded to forward.
+   // FYI: Due to `nsFrameSelection::GetFrameForNodeOffset()`, this cannot

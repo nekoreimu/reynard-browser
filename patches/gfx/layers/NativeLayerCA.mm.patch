@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/NativeLayerCA.mm b/gfx/layers/NativeLayerCA.mm
-index 5760a816612b..b7fdf83fc0eb 100644
+index 5760a816612b..dca18d1e6cea 100644
 --- a/gfx/layers/NativeLayerCA.mm
 +++ b/gfx/layers/NativeLayerCA.mm
 @@ -9,6 +9,9 @@
@@ -28,7 +28,7 @@ index 5760a816612b..b7fdf83fc0eb 100644
  void NativeLayerRootCA::SetBackingScale(float aBackingScale) {
    MutexAutoLock lock(mMutex);
  
-@@ -275,6 +287,16 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -275,6 +287,18 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
  }
  
  bool NativeLayerRootCA::CommitToScreen() {
@@ -40,12 +40,14 @@ index 5760a816612b..b7fdf83fc0eb 100644
 +    });
 +    return false;
 +  }
++
++  AutoCATransaction transaction;
 +#endif
 +
    MutexAutoLock lock(mMutex);
  
    if (!NS_IsMainThread() && mOffMainThreadCommitsSuspended) {
-@@ -287,6 +309,10 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -287,6 +311,10 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
                         mWindowIsFullscreen);
    mMutatedOnscreenLayerStructure = false;
  
@@ -56,7 +58,44 @@ index 5760a816612b..b7fdf83fc0eb 100644
    mCommitPending = false;
  
    if (StaticPrefs::gfx_webrender_debug_dump_native_layer_tree_to_file()) {
-@@ -428,6 +454,19 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+@@ -320,6 +348,16 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+     EmitTelemetryForVideoLowPower(videoLowPower);
+   }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  if (mOnscreenCommitData) {
++    auto data = mOnscreenCommitData.extract();
++    MutexAutoUnlock unlock(mMutex);
++    if (mOnscreenCommitCallback) {
++      mOnscreenCommitCallback(std::move(data));
++    }
++  }
++#endif
++
+   return true;
+ }
+ 
+@@ -360,6 +398,19 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
+   mMutatedOffscreenLayerStructure = false;
+ }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++void NativeLayerRootCA::SetOnscreenCommitData(mozilla::ipc::ByteBuf&& aData) {
++  MutexAutoLock lock(mMutex);
++  mOnscreenCommitData = Some(std::move(aData));
++}
++
++void NativeLayerRootCA::SetOnscreenCommitCallback(
++    std::function<void(mozilla::ipc::ByteBuf&&)> aCallback) {
++  MOZ_ASSERT(NS_IsMainThread());
++  mOnscreenCommitCallback = std::move(aCallback);
++}
++#endif
++
+ void NativeLayerRootCA::SetMutatedLayerStructure() {
+   mMutatedOnscreenLayerStructure = true;
+   mMutatedOffscreenLayerStructure = true;
+@@ -428,6 +479,19 @@ static void EmitTelemetryForVideoLowPower(VideoLowPowerType aVideoLowPower) {
    if (mustRebuild) {
      aRootCALayer.sublayers = sublayers;
    }
@@ -76,7 +115,7 @@ index 5760a816612b..b7fdf83fc0eb 100644
  }
  
  SnapshotterCADelegate::~SnapshotterCADelegate() = default;
-@@ -1527,6 +1566,14 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1527,6 +1591,14 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    return updateSucceeded;
  }
  
@@ -91,7 +130,7 @@ index 5760a816612b..b7fdf83fc0eb 100644
  CALayer* NativeLayerCA::UnderlyingCALayer(WhichRepresentation aRepresentation) {
    MutexAutoLock lock(mMutex);
    return GetRepresentation(aRepresentation).UnderlyingCALayer();
-@@ -1539,7 +1586,8 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1539,7 +1611,8 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    AVSampleBufferDisplayLayer* videoLayer =
        (AVSampleBufferDisplayLayer*)mContentCALayer;
  
@@ -101,7 +140,7 @@ index 5760a816612b..b7fdf83fc0eb 100644
      if (videoLayer.requiresFlushToResumeDecoding) {
        [videoLayer flush];
      }
-@@ -1645,6 +1693,11 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
+@@ -1645,6 +1718,11 @@ CGColorRef CGColorCreateForDeviceColor(const gfx::DeviceColor& aColor) {
    if (osValue != noErr) {
      MOZ_ASSERT(sampleBuffer == nullptr,
                 "Failed call shouldn't allocate memory.");

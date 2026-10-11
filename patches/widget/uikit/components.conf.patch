@@ -1,8 +1,22 @@
 diff --git a/widget/uikit/components.conf b/widget/uikit/components.conf
-index 385ba2f7868b..18489405c514 100644
+index 385ba2f7868b..16b795d33876 100644
 --- a/widget/uikit/components.conf
 +++ b/widget/uikit/components.conf
-@@ -31,6 +31,15 @@ Classes = [
+@@ -8,6 +8,13 @@ InitFunc = 'nsWidgetUIKitModuleCtor'
+ UnloadFunc = 'nsWidgetUIKitModuleDtor'
+ 
+ Classes = [
++    {
++        'cid': '{61b3e7bd-334a-49b3-91c8-4d0a64e4f5a0}',
++        'contract_ids': ['@mozilla.org/widget/parent/dragservice;1'],
++        'type': 'nsDragService',
++        'headers': ['/widget/uikit/nsDragService.h'],
++        'processes': ProcessSelector.MAIN_PROCESS_ONLY,
++    },
+     {
+         'cid': '{49f428e8-baf9-4ba3-b1b0-7d2fd3abbcea}',
+         'contract_ids': ['@mozilla.org/widget/parent/clipboard;1'],
+@@ -31,6 +38,15 @@ Classes = [
          'type': 'nsIOSBridge',
          'headers': ['/widget/uikit/IOSBridge.h'],
      },
@@ -18,7 +32,7 @@ index 385ba2f7868b..18489405c514 100644
      {
          'cid': '{2d96b3df-c051-11d1-a827-0040959a28c9}',
          'contract_ids': ['@mozilla.org/widget/appshell/uikit;1'],
-@@ -44,6 +53,19 @@ Classes = [
+@@ -44,6 +60,19 @@ Classes = [
          'type': 'nsTransferable',
          'headers': ['/widget/nsTransferable.h'],
      },

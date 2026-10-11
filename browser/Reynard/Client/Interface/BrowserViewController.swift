@@ -501,7 +501,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             }
         }
         browserChrome.onKeyboardDismissal = { [weak self] in
-            self?.tabManager.selectedTab?.session.engineView?.resignFirstResponder()
+            self?.tabManager.selectedTab?.session.dismissSoftwareKeyboard()
         }
     }
     
@@ -937,18 +937,21 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         let keyboardFrame = view.convert(frameValue.cgRectValue, from: nil)
         let keyboardOverlap = max(0, view.bounds.maxY - keyboardFrame.minY)
         let keyboardInset = max(0, keyboardOverlap - view.safeAreaInsets.bottom)
+        let spansWindow = view.bounds.width > 0
+        && keyboardFrame.width >= view.bounds.width * UX.floatingKeyboardWidthRatio
+        let sitsFlushWithBottom = keyboardFrame.maxY >= view.bounds.maxY - 8
         let isFloatingKeyboard = browserLayout.interfaceIdiom == .pad
-        && keyboardFrame.width > 0
-        && view.bounds.width > 0
-        && keyboardFrame.width < view.bounds.width * UX.floatingKeyboardWidthRatio
+        && !(spansWindow && sitsFlushWithBottom)
         let shouldAdjustForKeyboard = keyboardInset > 0
         && !isFloatingKeyboard
         && !tabOverview.isPresented
         && tabManager.selectedTab?.session.isInHardwareKeyboardMode() != true
+
+        let presentedController = presentedControllerInHierarchy
         let shouldRelocateInput = shouldAdjustForKeyboard
         && !searchOverlayCoordinator.isFocused
         && !browserChrome.isShowingFindInPage
-        && presentedControllerInHierarchy == nil
+        && (presentedController == nil || presentedController?.isBeingDismissed == true)
         
         let animation = keyboardAnimation(from: notification)
         if shouldRelocateInput && browserLayout.interfaceIdiom == .phone {

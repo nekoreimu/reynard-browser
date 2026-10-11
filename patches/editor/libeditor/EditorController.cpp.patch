@@ -1,0 +1,12 @@
+diff --git a/editor/libeditor/EditorController.cpp b/editor/libeditor/EditorController.cpp
+index e5f7a80528b3..332a7abb08a0 100644
+--- a/editor/libeditor/EditorController.cpp
++++ b/editor/libeditor/EditorController.cpp
+@@ -43,6 +43,7 @@ void EditorController::RegisterEditingCommands(
+   NS_REGISTER_COMMAND(DeleteCommand, "cmd_deleteWordForward");
+   NS_REGISTER_COMMAND(DeleteCommand, "cmd_deleteToBeginningOfLine");
+   NS_REGISTER_COMMAND(DeleteCommand, "cmd_deleteToEndOfLine");
++  NS_REGISTER_COMMAND(DeleteCommand, "cmd_deleteToEndOfParagraph");
+ 
+   // Insert content
+   NS_REGISTER_COMMAND(InsertPlaintextCommand, "cmd_insertText");

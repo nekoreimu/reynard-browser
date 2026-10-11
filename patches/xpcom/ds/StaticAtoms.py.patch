@@ -1,0 +1,12 @@
+diff --git a/xpcom/ds/StaticAtoms.py b/xpcom/ds/StaticAtoms.py
+index 360b013fe9cf..0d7ca43eddcd 100644
+--- a/xpcom/ds/StaticAtoms.py
++++ b/xpcom/ds/StaticAtoms.py
+@@ -1392,6 +1392,7 @@ STATIC_ATOMS = [
+     Atom("windowtype", "windowtype"),
+     Atom("withParam", "with-param"),
+     Atom("wrap", "wrap"),
++    Atom("writingsuggestions", "writingsuggestions"),
+     Atom("headerDNSPrefetchControl", "x-dns-prefetch-control"),
+     Atom("headerCSP", "content-security-policy"),
+     Atom("headerCSPReportOnly", "content-security-policy-report-only"),

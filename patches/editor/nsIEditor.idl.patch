@@ -1,0 +1,32 @@
+diff --git a/editor/nsIEditor.idl b/editor/nsIEditor.idl
+index 2344d03b9ce5..106315e743ef 100644
+--- a/editor/nsIEditor.idl
++++ b/editor/nsIEditor.idl
+@@ -40,6 +40,7 @@ interface nsIEditor  : nsISupports
+   const short ePreviousWord = 4;
+   const short eToBeginningOfLine = 5;
+   const short eToEndOfLine = 6;
++  const short eToEndOfParagraph = 7;
+ 
+ %{C++
+   static bool EDirectionIsValid(EDirection aDirectionAndAmount) {
+@@ -49,7 +50,8 @@ interface nsIEditor  : nsISupports
+            aDirectionAndAmount == nsIEditor::eNextWord ||
+            aDirectionAndAmount == nsIEditor::ePreviousWord ||
+            aDirectionAndAmount == nsIEditor::eToBeginningOfLine ||
+-           aDirectionAndAmount == nsIEditor::eToEndOfLine;
++           aDirectionAndAmount == nsIEditor::eToEndOfLine ||
++           aDirectionAndAmount == nsIEditor::eToEndOfParagraph;
+   }
+   static bool EDirectionIsValidExceptNone(EDirection aDirectionAndAmount) {
+     return aDirectionAndAmount != nsIEditor::eNone &&
+@@ -77,7 +79,8 @@ interface nsIEditor  : nsISupports
+     MOZ_ASSERT(EDirectionIsValid(aDirectionAndAmount));
+     return aDirectionAndAmount == nsIEditor::eNext ||
+            aDirectionAndAmount == nsIEditor::eNextWord ||
+-           aDirectionAndAmount == nsIEditor::eToEndOfLine;
++           aDirectionAndAmount == nsIEditor::eToEndOfLine ||
++           aDirectionAndAmount == nsIEditor::eToEndOfParagraph;
+   }
+ %}
+ 

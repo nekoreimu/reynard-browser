@@ -1,8 +1,16 @@
 diff --git a/gfx/layers/ipc/UiCompositorControllerParent.cpp b/gfx/layers/ipc/UiCompositorControllerParent.cpp
-index b04c706d6845..7ee278e88f2b 100644
+index b04c706d6845..f99ded3b0cdd 100644
 --- a/gfx/layers/ipc/UiCompositorControllerParent.cpp
 +++ b/gfx/layers/ipc/UiCompositorControllerParent.cpp
-@@ -112,16 +112,17 @@ mozilla::ipc::IPCResult UiCompositorControllerParent::RecvMaxToolbarHeight(
+@@ -14,6 +14,7 @@
+ #include "SynchronousTask.h"
+ #include "mozilla/gfx/Types.h"
+ #include "mozilla/ipc/Endpoint.h"
++#include "mozilla/layers/APZSampler.h"
+ #include "mozilla/layers/Compositor.h"
+ #include "mozilla/layers/CompositorBridgeParent.h"
+ #include "mozilla/layers/CompositorThread.h"
+@@ -112,16 +113,17 @@ mozilla::ipc::IPCResult UiCompositorControllerParent::RecvMaxToolbarHeight(
    return IPC_OK();
  }
  
@@ -25,3 +33,29 @@ index b04c706d6845..7ee278e88f2b 100644
  
    return IPC_OK();
  }
+@@ -189,6 +191,25 @@ UiCompositorControllerParent::RecvEnableLayerUpdateNotifications(
+   return IPC_OK();
+ }
+ 
++mozilla::ipc::IPCResult
++UiCompositorControllerParent::RecvNativeTextInputScrollers(
++    const nsTArray<ScrollableLayerGuid>& aScrollers) {
++#ifdef MOZ_WIDGET_UIKIT
++  CompositorBridgeParent* parent =
++      CompositorBridgeParent::GetCompositorBridgeParentFromLayersId(
++          mRootLayerTreeId);
++  if (parent) {
++    if (RefPtr<APZSampler> sampler = parent->GetAPZSampler()) {
++      sampler->SetNativeTextInputScrollers(aScrollers);
++      if (!aScrollers.IsEmpty()) {
++        parent->ScheduleComposition(wr::RenderReasons::OTHER);
++      }
++    }
++  }
++#endif
++  return IPC_OK();
++}
++
+ void UiCompositorControllerParent::ActorDestroy(ActorDestroyReason aWhy) {
+   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
+   Shutdown();

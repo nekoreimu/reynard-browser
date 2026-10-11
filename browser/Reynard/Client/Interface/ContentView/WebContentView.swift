@@ -138,7 +138,6 @@ final class WebContentView: UIView, UIScrollViewDelegate {
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: bottomAnchor),
             
-            errorLabel.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: UX.errorTopInset),
             errorLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             errorLabel.leadingAnchor.constraint(
                 greaterThanOrEqualTo: safeAreaLayoutGuide.leadingAnchor,
@@ -160,6 +159,10 @@ final class WebContentView: UIView, UIScrollViewDelegate {
             refreshIndicator.trailingAnchor.constraint(equalTo: refreshIndicatorContainer.trailingAnchor),
             refreshIndicator.bottomAnchor.constraint(equalTo: refreshIndicatorContainer.bottomAnchor),
         ])
+    }
+
+    func positionErrorLabel(below topAnchor: NSLayoutYAxisAnchor) {
+        errorLabel.topAnchor.constraint(equalTo: topAnchor, constant: UX.errorTopInset).isActive = true
     }
     
     func extendPageBackground(

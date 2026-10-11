@@ -1,0 +1,66 @@
+diff --git a/gfx/layers/apz/src/HitTestingTreeNode.cpp b/gfx/layers/apz/src/HitTestingTreeNode.cpp
+index 4ac96ab73838..f2ae5a842843 100644
+--- a/gfx/layers/apz/src/HitTestingTreeNode.cpp
++++ b/gfx/layers/apz/src/HitTestingTreeNode.cpp
+@@ -269,7 +269,8 @@ const CSSTransformMatrix& HitTestingTreeNode::GetTransform() const {
+ }
+ 
+ LayerToScreenMatrix4x4 HitTestingTreeNode::GetTransformToGecko(
+-    LayersId aRemoteLayersId) const {
++    LayersId aRemoteLayersId,
++    const AsyncPanZoomController* aRootContentApzc) const {
+   if (mParent) {
+     LayerToParentLayerMatrix4x4 thisToParent =
+         mTransform * AsyncTransformMatrix();
+@@ -278,10 +279,24 @@ LayerToScreenMatrix4x4 HitTestingTreeNode::GetTransformToGecko(
+           thisToParent * ViewAs<AsyncTransformComponentMatrix>(
+                              mApzc->GetTransformToLastDispatchedPaint(
+                                  LayoutAndVisual, aRemoteLayersId));
++      if (mApzc == aRootContentApzc) {
++        aRootContentApzc = nullptr;
++      }
++    } else if (mAsyncZoomContainerId && aRootContentApzc) {
++      if (mLayersId == aRootContentApzc->GetLayersId() &&
++          aRemoteLayersId != mLayersId) {
++        // Fixed elements outside the root scroll frame move with the viewport.
++        thisToParent =
++            thisToParent *
++            ViewAs<AsyncTransformComponentMatrix>(
++                aRootContentApzc->GetTransformToLastDispatchedPaint(
++                    AsyncTransformComponent::eVisual, aRemoteLayersId));
++        aRootContentApzc = nullptr;
++      }
+     }
+     ParentLayerToScreenMatrix4x4 parentToRoot =
+         ViewAs<ParentLayerToScreenMatrix4x4>(
+-            mParent->GetTransformToGecko(aRemoteLayersId),
++            mParent->GetTransformToGecko(aRemoteLayersId, aRootContentApzc),
+             PixelCastJustification::MovingDownToChildren);
+     return thisToParent * parentToRoot;
+   }
+@@ -296,9 +311,10 @@ const LayerIntRect& HitTestingTreeNode::GetVisibleRect() const {
+ }
+ 
+ ScreenRect HitTestingTreeNode::GetRemoteDocumentScreenRect(
+-    LayersId aRemoteDocumentLayersId) const {
++    LayersId aRemoteDocumentLayersId,
++    const AsyncPanZoomController* aRootContentApzc) const {
+   ScreenRect result = TransformBy(
+-      GetTransformToGecko(aRemoteDocumentLayersId),
++      GetTransformToGecko(aRemoteDocumentLayersId, aRootContentApzc),
+       IntRectToRect(LayerIntRect(LayerIntPoint(), mRemoteDocumentSize)));
+ 
+   for (const HitTestingTreeNode* node = this; node; node = node->GetParent()) {
+@@ -312,9 +328,9 @@ ScreenRect HitTestingTreeNode::GetRemoteDocumentScreenRect(
+     }
+ 
+     ScreenRect scrollPortOnScreenCoordinate = TransformBy(
+-        node->GetParent()
+-            ? node->GetParent()->GetTransformToGecko(node->GetLayersId())
+-            : LayerToScreenMatrix4x4(),
++        node->GetParent() ? node->GetParent()->GetTransformToGecko(
++                                node->GetLayersId(), aRootContentApzc)
++                          : LayerToScreenMatrix4x4(),
+         ViewAs<LayerPixel>(compositionBounds,
+                            PixelCastJustification::MovingDownToChildren));
+     if (scrollPortOnScreenCoordinate.IsEmpty()) {

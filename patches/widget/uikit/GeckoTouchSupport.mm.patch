@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..cd56d997baf4
+index 000000000000..aa1dae602b84
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
-@@ -0,0 +1,350 @@
+@@ -0,0 +1,334 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -297,12 +297,12 @@ index 000000000000..cd56d997baf4
 +            event, @selector(buttonMask));
 +    hasPrimaryPointerPress = buttonMask & 1;
 +  }
-+  const bool hasEditableInputContext =
-+      mGeckoChild &&
-+      mGeckoChild->GetInputContext().mIMEState.mEnabled != IMEEnabled::Disabled;
-+  if ((hasDirectTouch || hasPrimaryPointerPress) && !hasEditableInputContext) {
++
++  // The page may keep its hidden input focused after the keyboard is dismissed.
++  if ((hasDirectTouch || hasPrimaryPointerPress) && !self.isFirstResponder) {
 +    [self becomeFirstResponder];
 +  }
++
 +  if (touches.count > 0) {
 +    BOOL hasPencilTouch =
 +        [mPencilSupport pencilTouchesFromTouches:touches].count > 0;
@@ -310,22 +310,6 @@ index 000000000000..cd56d997baf4
 +  }
 +
 +  [super touchesBegan:touches withEvent:event];
-+
-+  // Dismiss the caret callout on any touch-down so that scrolling or
-+  // tap-to-reposition hides it immediately. Also cancel any pending
-+  // caret-menu resolution.
-+  if (mEditable.mCaretMenuActive) {
-+    mEditable.mCaretMenuActive = NO;
-+    [[UIMenuController sharedMenuController] hideMenuFromView:self];
-+  }
-+  if (mEditable.mPendingCaretMenu) {
-+    mEditable.mPendingCaretMenu = NO;
-+    [NSObject
-+        cancelPreviousPerformRequestsWithTarget:self
-+                                       selector:@selector(
-+                                                    resolveCaretMenuIfPending)
-+                                         object:nil];
-+  }
 +
 +  if (mGeckoChild) {
 +    [mTouchSupport touchesBegan:touches withEvent:event];

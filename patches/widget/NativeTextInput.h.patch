@@ -1,0 +1,147 @@
+diff --git a/widget/NativeTextInput.h b/widget/NativeTextInput.h
+new file mode 100644
+index 000000000000..18b6a46d2ca3
+--- /dev/null
++++ b/widget/NativeTextInput.h
+@@ -0,0 +1,141 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_NativeTextInput_h
++#define mozilla_NativeTextInput_h
++
++#include "Units.h"
++#include "mozilla/ScrollGeneration.h"
++#include "mozilla/gfx/Matrix.h"
++#include "mozilla/layers/ScrollableLayerGuid.h"
++#include "nsColor.h"
++#include "nsString.h"
++#include "nsTArray.h"
++
++namespace mozilla {
++
++namespace dom {
++class Document;
++void NotifyNativeTextInputPositionChanged(Document& aDocument);
++}  // namespace dom
++
++enum class NativeTextInputQuery : uint8_t {
++  State,
++  Appearance,
++  Caret,
++  SelectionRects,
++  SelectionHighlightRects,
++  HitTest,
++  Move,
++  LineBoundary,
++  ParagraphBoundary,
++  WritingDirection,
++  SetWritingDirection,
++  ToggleBold,
++  ToggleItalic,
++  ToggleUnderline,
++  SetSelection,
++  PrepareDeletion,
++  ReplaceText,
++  InsertDictation,
++  StartTextDrag,
++  ScrollSelectionIntoView,
++  ScrollAtPoint,
++  BlurFocusedInput,
++  ClearSelection,
++};
++
++enum class NativeTextInputDirection : uint8_t {
++  Forward,
++  Backward,
++  Right,
++  Left,
++  Up,
++  Down,
++};
++
++struct NativeTextInputRequest {
++  NativeTextInputQuery mQuery = NativeTextInputQuery::State;
++  NativeTextInputDirection mDirection = NativeTextInputDirection::Forward;
++  uint32_t mOffset = 0;
++  uint32_t mLength = 0;
++  uint32_t mCount = 1;
++  bool mAssociateWithNext = true;
++  bool mAnimated = false;
++  LayoutDeviceIntPoint mPoint;
++  nsString mText;
++};
++
++struct NativeTextInputScrollReference {
++  layers::ScrollableLayerGuid mGuid;
++  MainThreadScrollGeneration mGeneration;
++  CSSPoint mOffset;
++  LayoutDevicePoint mXAxis;
++  LayoutDevicePoint mYAxis;
++  LayoutDevicePoint mOrigin;
++  float mZoom = 0.0f;
++  bool mFixed = false;
++};
++
++struct NativeTextInputRect {
++  LayoutDeviceIntRect mRect;
++  LayoutDeviceRect mUntransformedRect;
++  gfx::Matrix mTransform;
++
++  uint32_t mStartOffset = 0;
++  uint32_t mEndOffset = 0;
++  bool mRTL = false;
++  bool mVertical = false;
++  bool mContainsStart = false;
++  bool mContainsEnd = false;
++  CopyableTArray<NativeTextInputScrollReference> mScrollReferences;
++  bool mAssociateWithNext = true;
++};
++
++struct NativeTextInputReply {
++  bool mSucceeded = false;
++  bool mEditable = false;
++  bool mSelectable = false;
++  bool mHasText = false;
++  bool mCanUndo = false;
++  bool mCanRedo = false;
++  bool mCanFormat = false;
++  bool mScrolled = false;
++  nscolor mCaretColor = NS_RGBA(0, 0, 0, 255);
++  bool mCaretColorIsAuto = true;
++  bool mSuppressSelectionDisplay = false;
++  nsString mText;
++  uint32_t mSelectionStart = UINT32_MAX;
++  uint32_t mSelectionLength = 0;
++  uint32_t mOffset = UINT32_MAX;
++  uint32_t mCharacterOffset = UINT32_MAX;
++  bool mAssociateWithNext = true;
++  bool mHitSelectableContent = false;
++  LayoutDeviceIntRect mRect;
++  bool mRTL = false;
++  bool mBackward = false;
++  nsTArray<NativeTextInputRect> mRects;
++  nsTArray<layers::ScrollableLayerGuid> mSelectionScrollers;
++  nsTArray<NativeTextInputScrollReference> mScrollReferences;
++  nsTArray<NativeTextInputRect> mClipRects;
++  nsTArray<NativeTextInputRect> mCaretRects;
++};
++
++struct NativeTextInputScrollUpdate {
++  layers::ScrollableLayerGuid mGuid;
++  MainThreadScrollGeneration mGeneration;
++  CSSPoint mVisualOffset;
++  CSSPoint mLayoutOffset;
++  float mZoom = 1.0f;
++  bool mScrolling = false;
++
++  bool operator==(const NativeTextInputScrollUpdate&) const = default;
++};
++
++}  // namespace mozilla
++
++#endif  // mozilla_NativeTextInput_h

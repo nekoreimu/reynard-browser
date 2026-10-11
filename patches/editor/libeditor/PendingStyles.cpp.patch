@@ -1,0 +1,12 @@
+diff --git a/editor/libeditor/PendingStyles.cpp b/editor/libeditor/PendingStyles.cpp
+index 061cde5d9223..a8c9ab197d77 100644
+--- a/editor/libeditor/PendingStyles.cpp
++++ b/editor/libeditor/PendingStyles.cpp
+@@ -294,6 +294,7 @@ void PendingStyles::OnSelectionChange(const HTMLEditor& aHTMLEditor,
+           case EditAction::eDeleteSelection:
+           case EditAction::eDeleteToBeginningOfSoftLine:
+           case EditAction::eDeleteToEndOfSoftLine:
++          case EditAction::eDeleteToEndOfHardLine:
+           case EditAction::eDeleteWordBackward:
+           case EditAction::eDeleteWordForward:
+             // This selection change is caused by the editor and the edit

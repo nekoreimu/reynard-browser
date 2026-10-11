@@ -1,0 +1,17 @@
+diff --git a/gfx/wr/webrender/src/render_api.rs b/gfx/wr/webrender/src/render_api.rs
+index 9a9e4b2ee8c8..d6f4ee2ecfd2 100644
+--- a/gfx/wr/webrender/src/render_api.rs
++++ b/gfx/wr/webrender/src/render_api.rs
+@@ -439,9 +439,9 @@ impl Transaction {
+         self.frame_ops.push(FrameMsg::AppendDynamicTransformProperties(transforms));
+     }
+ 
+-    /// Consumes this object and just returns the frame ops.
+-    pub fn get_frame_ops(self) -> Vec<FrameMsg> {
+-        self.frame_ops
++    /// Returns the frame messages and their notifications.
++    pub fn get_frame_ops_and_notifications(self) -> (Vec<FrameMsg>, Vec<NotificationRequest>) {
++        (self.frame_ops, self.notifications)
+     }
+ 
+     fn finalize(self, document_id: DocumentId) -> Box<TransactionMsg> {

@@ -1,0 +1,64 @@
+diff --git a/widget/IMEData.h b/widget/IMEData.h
+index 9fefe4708cfc..981972fc9d37 100644
+--- a/widget/IMEData.h
++++ b/widget/IMEData.h
+@@ -406,12 +406,21 @@ struct InputContext final {
+     mActionHint.Truncate();
+     mAutocapitalize.Truncate();
+     mAutocorrect = true;
++    mSpellCheckingEnabled = true;
++    mWritingSuggestionsEnabled = true;
++    mHasBeenPassword = false;
++    mHasEditableHost = false;
++    mReadOnly = false;
+   }
+ 
+   bool IsPasswordEditor() const {
+     return mHTMLInputType.LowerCaseEqualsLiteral("password");
+   }
+ 
++  bool IsTextSelectable() const {
++    return mIMEState.IsEditable() || mHasEditableHost || mReadOnly;
++  }
++
+   NativeKeyBindingsType GetNativeKeyBindingsType() const {
+     MOZ_DIAGNOSTIC_ASSERT(mIMEState.IsEditable());
+     // See GetInputType in IMEStateManager.cpp
+@@ -452,6 +461,15 @@ struct InputContext final {
+            // autocorrect is only supported by Android IME API, macOS text
+            // substitution and iOS API.
+            mAutocorrect != aOldContext.mAutocorrect ||
++#endif
++#ifdef XP_IOS
++           mHasEditableHost != aOldContext.mHasEditableHost ||
++           mReadOnly != aOldContext.mReadOnly ||
++           mSpellCheckingEnabled != aOldContext.mSpellCheckingEnabled ||
++           mWritingSuggestionsEnabled !=
++               aOldContext.mWritingSuggestionsEnabled ||
++           mHasBeenPassword != aOldContext.mHasBeenPassword ||
++           mInPrivateBrowsing != aOldContext.mInPrivateBrowsing ||
+ #endif
+            false;
+   }
+@@ -476,6 +494,21 @@ struct InputContext final {
+   /* A hint for autocorrect */
+   bool mAutocorrect = true;  // on-by-default
+ 
++  // Use the field's spellcheck setting
++  bool mSpellCheckingEnabled = true;
++
++  // Use the field's writingsuggestions setting.
++  bool mWritingSuggestionsEnabled = true;
++
++  // Don't let the keyboard learn passwords, even if the field type changes.
++  bool mHasBeenPassword = false;
++
++  // Selection can enter a non-editable child while its editor stays focused.
++  bool mHasEditableHost = false;
++
++  // Read-only text fields still allow selection.
++  bool mReadOnly = false;
++
+   /**
+    * mOrigin indicates whether this focus event refers to main or remote
+    * content.

@@ -1,6 +1,6 @@
 diff --git a/widget/uikit/GeckoPointerSupport.mm b/widget/uikit/GeckoPointerSupport.mm
 new file mode 100644
-index 000000000000..d8ec993deb1a
+index 000000000000..f5fd4d35e594
 --- /dev/null
 +++ b/widget/uikit/GeckoPointerSupport.mm
 @@ -0,0 +1,790 @@
@@ -34,7 +34,7 @@ index 000000000000..d8ec993deb1a
 +namespace SimpleGestureEventBinding = mozilla::dom::SimpleGestureEvent_Binding;
 +
 +@interface ChildView : UIView
-+- (void)showEditMenuForSecondaryClick;
++- (void)showEditMenuForSecondaryClickAtPoint:(CGPoint)aPoint;
 +@end
 +
 +@interface UIPanGestureRecognizer (Private)
@@ -288,7 +288,7 @@ index 000000000000..d8ec993deb1a
 +  if (contextMenuStatus.mApzStatus != nsEventStatus_eConsumeNoDefault &&
 +      contextMenuStatus.mContentStatus != nsEventStatus_eConsumeNoDefault &&
 +      insideFocusedEditor) {
-+    [mView showEditMenuForSecondaryClick];
++    [mView showEditMenuForSecondaryClickAtPoint:location];
 +  }
 +}
 +
@@ -332,12 +332,12 @@ index 000000000000..d8ec993deb1a
 +
 +- (BOOL)isPointInsideFocusedEditor:(CGPoint)point {
 +  if (![mView isFirstResponder] || !mGeckoChild ||
-+      mGeckoChild->IsVirtualKeyboardDisabled()) {
++      !mGeckoChild->GetInputContext().mIMEState.IsEditable()) {
 +    return NO;
 +  }
 +
 +  TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
-+  LayoutDeviceIntRect editorDevRect;
++  LayoutDeviceRect editorDevRect;
 +  if (!handler || !handler->EditorRect(editorDevRect)) {
 +    return NO;
 +  }

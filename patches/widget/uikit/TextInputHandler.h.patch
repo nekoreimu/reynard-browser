@@ -1,12 +1,13 @@
 diff --git a/widget/uikit/TextInputHandler.h b/widget/uikit/TextInputHandler.h
-index 5073da48f88c..d8112420222c 100644
+index 5073da48f88c..3ccee5b0e783 100644
 --- a/widget/uikit/TextInputHandler.h
 +++ b/widget/uikit/TextInputHandler.h
-@@ -8,13 +8,18 @@
+@@ -8,13 +8,19 @@
  #import <UIKit/UITextInput.h>
  
  #include "mozilla/EventForwards.h"
 +#include "mozilla/Maybe.h"
++#include "mozilla/NativeTextInput.h"
  #include "mozilla/TextEventDispatcherListener.h"
 +#include "mozilla/UniquePtr.h"
  #include "mozilla/widget/IMEData.h"
@@ -21,7 +22,7 @@ index 5073da48f88c..d8112420222c 100644
  class TextEventDispatcher;
  
  // This is the temporary input class. When implementing UITextInpt protocol, we
-@@ -36,14 +41,43 @@ class TextInputHandler final : public TextEventDispatcherListener {
+@@ -36,29 +42,103 @@ class TextInputHandler final : public TextEventDispatcherListener {
                              WidgetKeyboardEvent& aKeyboardEvent,
                              uint32_t aIndexOfKeypress, void* aData) override;
  
@@ -31,29 +32,46 @@ index 5073da48f88c..d8112420222c 100644
 +  void ReleasePhysicalKey(uint16_t aNativeKeyCode);
 +  void ReleasePhysicalKeys();
 +  void PostHandleKeyEvent(WidgetKeyboardEvent* aEvent);
-+  bool HandlePhysicalDeleteBackward(bool aHasIMEBuffer,
-+                                    bool aHasKoreanComposition);
++  bool HandlePhysicalDeleteBackward();
 +  bool GetEditCommands(const WidgetKeyboardEvent& aEvent,
 +                       nsTArray<CommandInt>& aCommands);
 +
    // UIKeyInput delegation
    bool InsertText(NSString* aText);
    bool HandleCommand(Command aCommand);
+ 
 +  bool MarkedRange(NSRange& aRange);
-+  bool SetMarkedText(NSString* aText, const NSRange& aSelectedRange);
-+  bool UnmarkText();
++  bool SetMarkedText(NSString* aText, const NSRange& aSelectedRange,
++                     TextRangeArray* aStyles = nullptr);
++  bool UnmarkText(bool aPreserveSelection = false);
 +
 +  bool SelectedRange(NSRange& aRange);
-+  bool SetSelectedRange(const NSRange& aRange);
++  bool SetSelectedRange(const NSRange& aRange, bool aAssociateWithNext = true,
++                        bool aForDeletion = false);
++
++  bool QueryNativeTextInput(const NativeTextInputRequest& aRequest,
++                            NativeTextInputReply& aReply);
++  void InvalidateTextInputState(bool aFocusChanged = false);
++  void InvalidateTextInputGeometry();
++  const NativeTextInputReply* NativeTextInputState();
++  bool SynchronizeTextInputState(bool aNotifyInputDelegate = false);
++
 +  bool TextLength(uint32_t& aLength);
 +  bool TextInRange(const NSRange& aRange, nsString& aText);
 +  bool ReplaceRange(const NSRange& aRange, NSString* aText);
-+  bool TextRectForRange(const NSRange& aRange, LayoutDeviceIntRect& aRect);
-+  bool CaretRectForOffset(uint32_t aOffset, LayoutDeviceIntRect& aRect);
-+  bool EditorRect(LayoutDeviceIntRect& aRect);
++
++  gfx::Matrix SelectionScrollTransform(
++      const nsTArray<NativeTextInputScrollReference>& aReferences) const;
++  LayoutDeviceRect TransformSelectionRect(
++      const LayoutDeviceIntRect& aRect,
++      const nsTArray<NativeTextInputScrollReference>& aReferences) const;
++  bool EditorRect(LayoutDeviceRect& aRect);
 +  bool RunCommand(EventMessage aMessage, bool aOnlyEnabledCheck,
 +                  bool* aIsEnabled = nullptr);
- 
++
++  bool SelectionUsesScroller(const layers::ScrollableLayerGuid& aGuid) const;
++  void UpdateSelectionScrollState(bool aSelectionMoved = false);
++
    void OnDestroyed();
  
   private:
@@ -65,8 +83,17 @@ index 5073da48f88c..d8112420222c 100644
 +  virtual ~TextInputHandler();
  
    bool DispatchKeyDownEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
-                             char16_t aCharCode, nsEventStatus& aStatus);
-@@ -54,11 +88,26 @@ class TextInputHandler final : public TextEventDispatcherListener {
+-                            char16_t aCharCode, nsEventStatus& aStatus);
++                            char16_t aCharCode, Modifiers aModifiers,
++                            nsEventStatus& aStatus);
+   bool DispatchKeyUpEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
+-                          char16_t aCharCode, nsEventStatus& aStatus);
++                          char16_t aCharCode, Modifiers aModifiers,
++                          nsEventStatus& aStatus);
+   bool DispatchKeyPressEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
+-                             char16_t aCharCode, nsEventStatus& aStatus);
++                             char16_t aCharCode, Modifiers aModifiers,
++                             nsEventStatus& aStatus);
  
    bool EmulateKeyboardEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
                              char16_t charCode);
@@ -76,7 +103,8 @@ index 5073da48f88c..d8112420222c 100644
 +  bool PrepareCurrentKeyForIME();
 +  void MarkCurrentKeyEventFailed();
 +  bool DispatchPhysicalKeyDown(WebEvent* aEvent, bool aForceRepeat,
-+                               bool aHasCurrentNativeEvent);
++                               bool aHasCurrentNativeEvent,
++                               Maybe<Command>& aCommand);
 +  bool CancelMarkedText();
 +  void ClearCompositionState();
 +  bool HasMarkedText() const;
@@ -88,6 +116,15 @@ index 5073da48f88c..d8112420222c 100644
 +  NSRange mMarkedRange;
 +  Maybe<NSRange> mSelectedRangeOverride;
 +  nsString mMarkedText;
++  RefPtr<TextRangeArray> mMarkedTextStyles;
++
++  Maybe<NativeTextInputReply> mNativeTextInputState;
++  uint64_t mNativeTextInputFocusGeneration = 0;
++  bool mNativeTextInputStateDirty = true;
++  bool mNativeTextInputGeometryDirty = true;
++  bool mSynchronizingNativeTextInputState = false;
++  bool mUpdatingSelectionFromCompositor = false;
++
 +  UniquePtr<GeckoKeyboardSupport> mKeyboardSupport;
 +  AutoTArray<UniquePtr<KeyEventState>, 1> mCurrentKeyEvents;
  };

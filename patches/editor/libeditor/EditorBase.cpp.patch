@@ -1,0 +1,69 @@
+diff --git a/editor/libeditor/EditorBase.cpp b/editor/libeditor/EditorBase.cpp
+index 07a22bd5d06b..c85f2ae3ee7d 100644
+--- a/editor/libeditor/EditorBase.cpp
++++ b/editor/libeditor/EditorBase.cpp
+@@ -4195,6 +4195,36 @@ nsresult EditorBase::OnCompositionChange(
+   MOZ_ASSERT(!aCompositionChangeEvent.mData.IsVoid());
+   editActionData.SetData(aCompositionChangeEvent.mData);
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  if (Text* composingText = mComposition->GetContainerTextNode();
++      composingText && !composingText->IsInComposedDoc()) {
++    RefPtr<Text> text = Text::FromNodeOrNull(SelectionRef().GetFocusNode());
++    const bool sameText = text && text->TextEquals(composingText);
++    const bool sameField =
++        text && text->IsInComposedDoc() &&
++        text->IsInclusiveDescendantOf(mComposition->GetEventTargetNode());
++
++    if (sameText && sameField) {
++      // Web apps can replace the composing text node after a selection change.
++      // Keep the composition on its copy in the same editing field.
++      RefPtr<TextComposition> composition = mComposition;
++      composition->OnUpdateCompositionInEditor(
++          composition->String(), *text,
++          composition->StartOffsetMaybeInFollowingTextNode());
++      nsresult rv = CompositionTransaction::SetIMESelection(
++          *this, text, composition->ClampedStartOffsetInTextNode(),
++          composition->ClampedLengthInTextNode(), composition->GetRanges());
++
++      if (NS_FAILED(rv)) {
++        return rv;
++      }
++      if (!mComposition) {
++        return NS_OK;
++      }
++    }
++  }
++#endif
++
+   // If we're an `HTMLEditor` and this is second or later composition change,
+   // we should set target range to the range of composition string.
+   // Otherwise, set target ranges to selection ranges (will be done by
+@@ -4921,6 +4951,9 @@ nsresult EditorBase::DeleteSelectionAsAction(
+     case nsIEditor::eToEndOfLine:
+       editAction = EditAction::eDeleteToEndOfSoftLine;
+       break;
++    case nsIEditor::eToEndOfParagraph:
++      editAction = EditAction::eDeleteToEndOfHardLine;
++      break;
+   }
+ 
+   AutoEditActionDataSetter editActionData(*this, editAction, aPrincipal);
+@@ -4938,7 +4971,8 @@ nsresult EditorBase::DeleteSelectionAsAction(
+       case eNextWord:
+       case ePreviousWord:
+       case eToBeginningOfLine:
+-      case eToEndOfLine: {
++      case eToEndOfLine:
++      case eToEndOfParagraph: {
+         if (mCaretStyle != 1) {
+           aDirectionAndAmount = eNone;
+           break;
+@@ -4977,6 +5011,7 @@ nsresult EditorBase::DeleteSelectionAsAction(
+         break;
+       case EditAction::eDeleteWordForward:
+       case EditAction::eDeleteToEndOfSoftLine:
++      case EditAction::eDeleteToEndOfHardLine:
+         editActionData.UpdateEditAction(EditAction::eDeleteForward);
+         break;
+       default:

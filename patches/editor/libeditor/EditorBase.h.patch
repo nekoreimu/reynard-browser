@@ -1,0 +1,17 @@
+diff --git a/editor/libeditor/EditorBase.h b/editor/libeditor/EditorBase.h
+index a4c58298e697..622dde3d55b4 100644
+--- a/editor/libeditor/EditorBase.h
++++ b/editor/libeditor/EditorBase.h
+@@ -2754,9 +2754,9 @@ class EditorBase : public nsIEditor,
+       case nsIEditor::eNextWord:
+       case nsIEditor::eToBeginningOfLine:
+       case nsIEditor::eToEndOfLine:
+-        // If the amount is word or
+-        // line,`AutoClonedSelectionRangeArray::ExtendAnchorFocusRangeFor()`
+-        // must have already been extended collapsed ranges before.
++      case nsIEditor::eToEndOfParagraph:
++        // ExtendAnchorFocusRangeFor() must already have expanded the range for
++        // word, line, or paragraph deletion.
+         return HowToHandleCollapsedRange::Ignore;
+     }
+     MOZ_ASSERT_UNREACHABLE("Invalid nsIEditor::EDirection value");

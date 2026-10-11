@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/PBrowser.ipdl b/dom/ipc/PBrowser.ipdl
-index 3f51dbc83eb1..5dbba688d72a 100644
+index 3f51dbc83eb1..2a0163bebac3 100644
 --- a/dom/ipc/PBrowser.ipdl
 +++ b/dom/ipc/PBrowser.ipdl
 @@ -41,6 +41,7 @@ include "mozilla/ipc/TransportSecurityInfoUtils.h";
@@ -10,7 +10,24 @@ index 3f51dbc83eb1..5dbba688d72a 100644
  using mozilla::contentanalysis::StringHashSet from "mozilla/contentanalysis/ContentAnalysisIPCTypes.h";
  using mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
  using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
-@@ -383,6 +384,7 @@ parent:
+@@ -74,6 +75,8 @@ using class mozilla::WidgetDragEvent from "ipc/nsGUIEventIPC.h";
+ using class mozilla::WidgetPointerEvent from "ipc/nsGUIEventIPC.h";
+ using struct nsRect from "nsRect.h";
+ using class mozilla::WidgetSelectionEvent from "ipc/nsGUIEventIPC.h";
++using mozilla::NativeTextInputRequest from "ipc/nsGUIEventIPC.h";
++using mozilla::NativeTextInputReply from "ipc/nsGUIEventIPC.h";
+ using class mozilla::WidgetTouchEvent from "ipc/nsGUIEventIPC.h";
+ using struct mozilla::dom::RemoteDOMEvent from "mozilla/dom/TabMessageTypes.h";
+ using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
+@@ -206,6 +209,7 @@ both:
+     async AsyncMessage(nsString aMessage, StructuredCloneData aData);
+ 
+ parent:
++    [Compress] async NativeTextInputPositionChanged();
+     async PPaymentRequest();
+ 
+     /**
+@@ -383,6 +387,7 @@ parent:
                      IPCImage? customCursor,
                      float resolutionX, float resolutionY,
                      uint32_t hotspotX, uint32_t hotspotY, bool force);
@@ -18,7 +35,7 @@ index 3f51dbc83eb1..5dbba688d72a 100644
  
      /**
       * Used to set the current text of the status tooltip.
-@@ -693,7 +695,8 @@ child:
+@@ -693,7 +698,8 @@ child:
  
      async UpdateRemoteStyle(StyleImageRendering aImageRendering);
  
@@ -28,3 +45,44 @@ index 3f51dbc83eb1..5dbba688d72a 100644
  
      async DynamicToolbarOffsetChanged(ScreenIntCoord offset);
  
+@@ -783,6 +789,8 @@ child:
+     [Priority=input]
+     async RealKeyEvent(WidgetKeyboardEvent aEvent, nsID aUUID);
+     async NormalPriorityRealKeyEvent(WidgetKeyboardEvent aEvent, nsID aUUID);
++    [Nested=inside_sync] sync NativeKeyEvent(WidgetKeyboardEvent aEvent,
++                                           nsID aUUID);
+ 
+     [Priority=input]
+     async MouseWheelEvent(WidgetWheelEvent event,
+@@ -847,19 +855,31 @@ both:
+ child:
+     [Priority=input] async CompositionEvent(WidgetCompositionEvent event);
+     async NormalPriorityCompositionEvent(WidgetCompositionEvent event);
++    [Nested=inside_sync] sync NativeCompositionEvent(WidgetCompositionEvent event);
++
++    // A query doesn't wait for async input events. Send selection and key
++    // events synchronously before reading their result.
++    [Nested=inside_sync] sync QueryNativeTextInput(NativeTextInputRequest request)
++        returns (NativeTextInputReply reply);
++
++    async StartNativeTextDrag(LayoutDeviceIntPoint point) returns (bool started);
+ 
+     [Priority=input] async SelectionEvent(WidgetSelectionEvent event);
+     async NormalPrioritySelectionEvent(WidgetSelectionEvent event);
++    [Nested=inside_sync] sync NativeSelectionEvent(WidgetSelectionEvent event)
++        returns (bool succeeded);
+ 
+ 
+     [Priority=input] async SimpleContentCommandEvent(EventMessage message);
+     async NormalPrioritySimpleContentCommandEvent(EventMessage message);
++    [Nested=inside_sync] sync NativeSimpleContentCommandEvent(EventMessage message);
+ 
+     /**
+      * Dispatch eContentCommandInsertText event in the remote process.
+      */
+     [Priority=input] async InsertText(nsString aStringToInsert);
+     async NormalPriorityInsertText(nsString aStringToInsert);
++    [Nested=inside_sync] sync NativeInsertText(nsString aStringToInsert);
+ 
+     /**
+      * Dispatch eContentCommandReplaceText event in the remote process.

@@ -1,0 +1,26 @@
+diff --git a/gfx/layers/NativeLayer.h b/gfx/layers/NativeLayer.h
+index 60ca4cfccd37..e844882cfd0d 100644
+--- a/gfx/layers/NativeLayer.h
++++ b/gfx/layers/NativeLayer.h
+@@ -16,6 +16,10 @@
+ 
+ namespace mozilla {
+ 
++namespace ipc {
++class ByteBuf;
++}  // namespace ipc
++
+ namespace gl {
+ class GLContext;
+ class MozFramebuffer;
+@@ -78,6 +82,10 @@ class NativeLayerRoot {
+   // has processed any previous commits.
+   virtual void WaitUntilCommitToScreenHasBeenProcessed() {}
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  virtual void SetOnscreenCommitData(mozilla::ipc::ByteBuf&& aData) {}
++#endif
++
+   // Returns a new NativeLayerRootSnapshotter that can be used to read back the
+   // visual output of this NativeLayerRoot. The snapshotter needs to be
+   // destroyed on the same thread that CreateSnapshotter() was called on. Only

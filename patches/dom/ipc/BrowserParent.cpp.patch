@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index 7661a1e0bfbf..e2bc69e3f076 100644
+index 7661a1e0bfbf..0e8666e1c5be 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
 @@ -142,6 +142,10 @@
@@ -35,7 +35,7 @@ index 7661a1e0bfbf..e2bc69e3f076 100644
    }
    return IPC_OK();
  }
-@@ -1033,14 +1052,21 @@ void BrowserParent::InitRendering() {
+@@ -1033,13 +1052,20 @@ void BrowserParent::InitRendering() {
          widget->SupportsUnadjustedMovement());
    }
  
@@ -48,17 +48,16 @@ index 7661a1e0bfbf..e2bc69e3f076 100644
 -        widget->GetDynamicToolbarMaxHeight());
 +        widget->GetDynamicToolbarMaxHeight(),
 +        widget->GetDynamicToolbarMinHeight());
-+  }
+   }
 +
-+#ifdef XP_IOS
++#  ifdef XP_IOS
 +  if (mBackgroundColor) {
 +    mozilla::widget::DispatchBackgroundColor(widget, *mBackgroundColor);
-   }
++  }
++#  endif
  #endif
-+#endif
  }
  
- bool BrowserParent::AttachWindowRenderer() {
 @@ -1206,7 +1232,10 @@ void BrowserParent::SizeModeChanged(const nsSizeMode& aSizeMode) {
  
  void BrowserParent::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
@@ -71,7 +70,25 @@ index 7661a1e0bfbf..e2bc69e3f076 100644
    }
  }
  
-@@ -2399,6 +2428,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
+@@ -2124,11 +2153,17 @@ void BrowserParent::SendRealKeyEvent(WidgetKeyboardEvent& aEvent) {
+       aEvent.mKeyCode,      aEvent.mCharCode,      aEvent.mPseudoCharCode,
+       aEvent.mKeyNameIndex, aEvent.mCodeNameIndex, aEvent.mModifiers,
+       nsID::GenerateUUID()};
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<BrowserParent> kungFuDeathGrip(this);
++  const bool ok =
++      PBrowserParent::SendNativeKeyEvent(aEvent, sendKeyEventData.mUUID);
++#else
+   const bool ok =
+       Manager()->IsInputPriorityEventEnabled()
+           ? PBrowserParent::SendRealKeyEvent(aEvent, sendKeyEventData.mUUID)
+           : PBrowserParent::SendNormalPriorityRealKeyEvent(
+                 aEvent, sendKeyEventData.mUUID);
++#endif
+ 
+   NS_WARNING_ASSERTION(ok, "PBrowserParent::SendRealKeyEvent() failed");
+   MOZ_ASSERT(!ok || aEvent.HasBeenPostedToRemoteProcess());
+@@ -2399,6 +2434,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
    return IPC_OK();
  }
  
@@ -88,64 +105,191 @@ index 7661a1e0bfbf..e2bc69e3f076 100644
  mozilla::ipc::IPCResult BrowserParent::RecvSetLinkStatus(
      const nsString& aStatus) {
    nsCOMPtr<nsIXULBrowserWindow> xulBrowserWindow = GetXULBrowserWindow();
-@@ -2549,14 +2588,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyIMEPositionChange(
-     const ContentCache& aContentCache,
-     const IMENotification& aIMENotification) {
-   nsCOMPtr<nsIWidget> widget = GetTextInputHandlingWidget();
--  if (!widget || !IMEStateManager::DoesBrowserParentHaveIMEFocus(this)) {
-+  if (!widget) {
-     return IPC_OK();
-   }
-   if (NS_WARN_IF(!aContentCache.IsValid())) {
-     return IPC_FAIL(this, "Invalid content cache data");
-   }
--  mContentCache.AssignContent(aContentCache, widget, &aIMENotification);
--  mContentCache.MaybeNotifyIME(widget, aIMENotification);
-+  if (IMEStateManager::DoesBrowserParentHaveIMEFocus(this)) {
-+    mContentCache.AssignContent(aContentCache, widget, &aIMENotification);
-+    mContentCache.MaybeNotifyIME(widget, aIMENotification);
-+  } else {
-+    // During APZ scroll, BrowserParent temporarily loses IME focus.
-+    // Still update the cache and notify the widget directly so that
-+    // UIKit gets updated caret/selection geometry during scrolling.
-+    mContentCache.AssignContent(aContentCache, widget);
-+    widget->NotifyIME(aIMENotification);
-+  }
-   return IPC_OK();
+@@ -3236,6 +3281,76 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
+   return true;
  }
  
-@@ -3218,18 +3265,31 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
-       NS_WARN_IF(aEvent.Failed())) {
-     return true;
-   }
-+  nsCOMPtr<nsIWidget> browserWidget = GetWidget();
-+  const LayoutDeviceIntPoint textInputWidgetOffset =
-+      browserWidget != textInputHandlingWidget
-+          ? nsLayoutUtils::WidgetToWidgetOffset(browserWidget,
-+                                                textInputHandlingWidget)
-+          : LayoutDeviceIntPoint();
-   switch (aEvent.mMessage) {
-     case eQueryTextRect:
-     case eQueryCaretRect:
-     case eQueryEditorRect: {
--      nsCOMPtr<nsIWidget> browserWidget = GetWidget();
-       if (browserWidget != textInputHandlingWidget) {
--        aEvent.mReply->mRect += nsLayoutUtils::WidgetToWidgetOffset(
--            browserWidget, textInputHandlingWidget);
-+        aEvent.mReply->mRect += textInputWidgetOffset;
-       }
-       aEvent.mReply->mRect = TransformChildToParent(aEvent.mReply->mRect);
-       break;
-     }
-+    case eQueryTextRectArray: {
-+      for (LayoutDeviceIntRect& rect : aEvent.mReply->mRectArray) {
-+        if (browserWidget != textInputHandlingWidget) {
-+          rect += textInputWidgetOffset;
-+        }
-+        rect = TransformChildToParent(rect);
++mozilla::ipc::IPCResult BrowserParent::RecvNativeTextInputPositionChanged() {
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<BrowserParent> focused = GetFocused();
++  // A parent can scroll and move this editor. Ignore other documents.
++  for (BrowserParent* ancestor = focused; ancestor;) {
++    if (ancestor == this) {
++      if (nsCOMPtr<nsIWidget> widget = focused->GetTextInputHandlingWidget()) {
++        widget->NotifyIME(IMENotification(NOTIFY_IME_OF_POSITION_CHANGE));
 +      }
 +      break;
 +    }
-     default:
-       break;
++
++    BrowserBridgeParent* bridge = ancestor->GetBrowserBridgeParent();
++    ancestor = bridge ? bridge->Manager() : nullptr;
++  }
++#endif
++  return IPC_OK();
++}
++
++bool BrowserParent::QueryNativeTextInput(const NativeTextInputRequest& aRequest,
++                                         NativeTextInputReply& aReply) {
++  nsCOMPtr<nsIWidget> widget = GetTextInputHandlingWidget();
++  nsCOMPtr<nsIWidget> browserWidget = GetWidget();
++  if (mIsDestroyed || !widget || !browserWidget) {
++    return false;
++  }
++
++  const LayoutDeviceIntPoint offset =
++      browserWidget != widget
++          ? nsLayoutUtils::WidgetToWidgetOffset(browserWidget, widget)
++          : LayoutDeviceIntPoint();
++  NativeTextInputRequest request(aRequest);
++  request.mPoint = TransformParentToChild(request.mPoint) - offset;
++  if (!SendQueryNativeTextInput(request, &aReply) || !aReply.mSucceeded) {
++    return false;
++  }
++
++  auto transformReferences =
++      [&](nsTArray<NativeTextInputScrollReference>& aReferences) {
++        for (auto& reference : aReferences) {
++          const LayoutDevicePoint origin =
++              TransformChildToParent(reference.mOrigin + offset);
++          reference.mXAxis = TransformChildToParent(reference.mOrigin +
++                                                    reference.mXAxis + offset) -
++                             origin;
++          reference.mYAxis = TransformChildToParent(reference.mOrigin +
++                                                    reference.mYAxis + offset) -
++                             origin;
++          reference.mOrigin = origin;
++        }
++      };
++  auto transformRects = [&](nsTArray<NativeTextInputRect>& aRects) {
++    for (auto& rect : aRects) {
++      rect.mRect = TransformChildToParent(rect.mRect + offset);
++      transformReferences(rect.mScrollReferences);
++    }
++  };
++
++  transformReferences(aReply.mScrollReferences);
++  if (!aReply.mRect.IsEmpty()) {
++    aReply.mRect = TransformChildToParent(aReply.mRect + offset);
++  }
++
++  transformRects(aReply.mRects);
++  transformRects(aReply.mClipRects);
++  transformRects(aReply.mCaretRects);
++
++  return true;
++}
++
+ bool BrowserParent::SendCompositionEvent(WidgetCompositionEvent& aEvent,
+                                          uint32_t aCompositionId) {
+   if (mIsDestroyed) {
+@@ -3253,9 +3368,15 @@ bool BrowserParent::SendCompositionEvent(WidgetCompositionEvent& aEvent,
+     return true;
    }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  // Apply marked text before UIKit reads the updated text and caret.
++  RefPtr<BrowserParent> kungFuDeathGrip(this);
++  const bool ret = PBrowserParent::SendNativeCompositionEvent(aEvent);
++#else
+   bool ret = Manager()->IsInputPriorityEventEnabled()
+                  ? PBrowserParent::SendCompositionEvent(aEvent)
+                  : PBrowserParent::SendNormalPriorityCompositionEvent(aEvent);
++#endif
+   if (NS_WARN_IF(!ret)) {
+     return false;
+   }
+@@ -3272,14 +3393,20 @@ bool BrowserParent::SendSelectionEvent(WidgetSelectionEvent& aEvent) {
+     return true;
+   }
+   mContentCache.OnSelectionEvent(aEvent);
++  bool succeeded = true;
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<BrowserParent> kungFuDeathGrip(this);
++  const bool ret = PBrowserParent::SendNativeSelectionEvent(aEvent, &succeeded);
++#else
+   bool ret = Manager()->IsInputPriorityEventEnabled()
+                  ? PBrowserParent::SendSelectionEvent(aEvent)
+                  : PBrowserParent::SendNormalPrioritySelectionEvent(aEvent);
++#endif
+   if (NS_WARN_IF(!ret)) {
+     return false;
+   }
+   MOZ_ASSERT(aEvent.HasBeenPostedToRemoteProcess());
+-  aEvent.mSucceeded = true;
++  aEvent.mSucceeded = succeeded;
+   return true;
+ }
+ 
+@@ -3295,6 +3422,14 @@ bool BrowserParent::SendSimpleContentCommandEvent(
+     return false;
+   }
+   mContentCache.OnContentCommandEvent(aEvent);
++#ifdef MOZ_WIDGET_UIKIT
++  if (aEvent.mMessage == eContentCommandDelete ||
++      aEvent.mMessage == eContentCommandUndo ||
++      aEvent.mMessage == eContentCommandRedo) {
++    RefPtr<BrowserParent> kungFuDeathGrip(this);
++    return PBrowserParent::SendNativeSimpleContentCommandEvent(aEvent.mMessage);
++  }
++#endif
+   return Manager()->IsInputPriorityEventEnabled()
+              ? PBrowserParent::SendSimpleContentCommandEvent(aEvent.mMessage)
+              : PBrowserParent::SendNormalPrioritySimpleContentCommandEvent(
+@@ -3306,10 +3441,15 @@ bool BrowserParent::SendInsertText(const WidgetContentCommandEvent& aEvent) {
+     return false;
+   }
+   mContentCache.OnContentCommandEvent(aEvent);
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<BrowserParent> kungFuDeathGrip(this);
++  return PBrowserParent::SendNativeInsertText(aEvent.mString.ref());
++#else
+   return Manager()->IsInputPriorityEventEnabled()
+              ? PBrowserParent::SendInsertText(aEvent.mString.ref())
+              : PBrowserParent::SendNormalPriorityInsertText(
+                    aEvent.mString.ref());
++#endif
+ }
+ 
+ bool BrowserParent::SendReplaceText(const WidgetContentCommandEvent& aEvent) {
+@@ -3470,7 +3610,20 @@ mozilla::ipc::IPCResult BrowserParent::RecvGetInputContext(
+ 
+ mozilla::ipc::IPCResult BrowserParent::RecvSetInputContext(
+     const InputContext& aContext, const InputContextAction& aAction) {
++#ifdef MOZ_WIDGET_UIKIT
++  // Updating the input context can make UIKit ask for text. We can't send that
++  // query while handling this urgent message, so update it afterward.
++  RefPtr<BrowserParent> self = this;
++  NS_DispatchToCurrentThread(NS_NewRunnableFunction(
++      "BrowserParent::SetInputContext", [self, aContext, aAction] {
++        if (!self->mIsDestroyed) {
++          IMEStateManager::SetInputContextForChildProcess(self, aContext,
++                                                          aAction);
++        }
++      }));
++#else
+   IMEStateManager::SetInputContextForChildProcess(this, aContext, aAction);
++#endif
+   return IPC_OK();
+ }
+ 
+@@ -3920,7 +4073,8 @@ mozilla::ipc::IPCResult BrowserParent::RecvInvokeDragSession(
+     const MaybeDiscarded<WindowContext>& aSourceTopWindowContext) {
+   nsCOMPtr<nsIDragService> dragService =
+       do_GetService("@mozilla.org/widget/dragservice;1");
+-  nsPresContext* presContext = mFrameElement->OwnerDoc()->GetPresContext();
++  RefPtr<nsPresContext> presContext =
++      mFrameElement->OwnerDoc()->GetPresContext();
+   const bool isValidRemoteDrag = [&]() {
+     if (!dragService || !presContext) {
+       return false;
+@@ -3983,6 +4137,10 @@ mozilla::ipc::IPCResult BrowserParent::RecvInvokeDragSession(
+   presContext->EventStateManager()->BeginTrackingRemoteDragGesture(
+       mFrameElement, dragStartData);
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  presContext->EventStateManager()->ContinueNativeDragGesture();
++#endif
++
+   nsCOMPtr<nsIObserverService> os = services::GetObserverService();
+   os->NotifyObservers(nullptr, "content-invoked-drag", nullptr);
+ 

@@ -1,0 +1,155 @@
+diff --git a/widget/uikit/nsDragService.mm b/widget/uikit/nsDragService.mm
+new file mode 100644
+index 000000000000..fcee712ca7be
+--- /dev/null
++++ b/widget/uikit/nsDragService.mm
+@@ -0,0 +1,149 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import <UIKit/UIKit.h>
++
++#include "nsDragService.h"
++
++#include "gfxUtils.h"
++#include "nsArrayUtils.h"
++#include "nsITransferable.h"
++#include "nsIWidget.h"
++
++@interface UIView (GeckoTextDragSource)
++- (BOOL)prepareTextDragItems:(nsIArray*)aTransferables
++                     preview:(UIImage*)aPreview;
++@end
++
++already_AddRefed<nsIDragSession> nsDragService::CreateDragSession() {
++  RefPtr<nsDragSession> session = new nsDragSession();
++  return session.forget();
++}
++
++nsresult nsDragSession::InvokeDragSessionImpl(
++    nsIWidget* aWidget, nsIArray* aTransferables,
++    const mozilla::Maybe<mozilla::CSSIntRegion>& aRegion,
++    uint32_t aActionType) {
++  UIView* view = static_cast<UIView*>(aWidget->GetNativeData(NS_NATIVE_WIDGET));
++  if (!view) {
++    return NS_ERROR_NOT_AVAILABLE;
++  }
++
++  if (![view respondsToSelector:@selector(prepareTextDragItems:preview:)]) {
++    return NS_ERROR_NOT_AVAILABLE;
++  }
++
++  mAllowedActions = aActionType;
++  mTransferables = aTransferables;
++
++  mozilla::LayoutDeviceIntRect rect;
++  RefPtr<mozilla::gfx::SourceSurface> surface;
++  nsPresContext* context;
++  DrawDrag(mSourceNode, aRegion, mScreenPosition, &rect, &surface, &context);
++
++  UIImage* preview = nil;
++  RefPtr<mozilla::gfx::DataSourceSurface> data =
++      surface ? gfxUtils::CopySurfaceToDataSourceSurfaceWithFormat(
++                    surface, mozilla::gfx::SurfaceFormat::B8G8R8A8)
++              : nullptr;
++  if (data) {
++    mozilla::gfx::DataSourceSurface::ScopedMap map(
++        data, mozilla::gfx::DataSourceSurface::READ);
++    if (map.IsMapped()) {
++      CFDataRef pixels = CFDataCreate(kCFAllocatorDefault, map.GetData(),
++                                      map.GetStride() * data->GetSize().height);
++      CGDataProviderRef provider = CGDataProviderCreateWithCFData(pixels);
++      CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
++      CGImageRef image = CGImageCreate(
++          data->GetSize().width, data->GetSize().height, 8, 32, map.GetStride(),
++          colorSpace,
++          kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedFirst,
++          provider, nullptr, true, kCGRenderingIntentDefault);
++      if (image) {
++        preview = [UIImage imageWithCGImage:image
++                                      scale:view.contentScaleFactor
++                                orientation:UIImageOrientationUp];
++      }
++      CGImageRelease(image);
++      CGColorSpaceRelease(colorSpace);
++      CGDataProviderRelease(provider);
++      CFRelease(pixels);
++    }
++  }
++
++  return [view prepareTextDragItems:aTransferables preview:preview]
++             ? NS_OK
++             : NS_ERROR_FAILURE;
++}
++
++void nsDragSession::SetTransferables(nsIArray* aTransferables) {
++  mTransferables = aTransferables;
++  mDataTransfer = nullptr;
++}
++
++NS_IMETHODIMP nsDragSession::GetNumDropItems(uint32_t* aNumItems) {
++  *aNumItems = 0;
++  return mTransferables ? mTransferables->GetLength(aNumItems) : NS_OK;
++}
++
++NS_IMETHODIMP nsDragSession::GetData(nsITransferable* aTransferable,
++                                     uint32_t aItem) {
++  if (!aTransferable || !mTransferables) {
++    return NS_ERROR_INVALID_ARG;
++  }
++
++  nsCOMPtr<nsITransferable> source = do_QueryElementAt(mTransferables, aItem);
++  if (!source) {
++    return NS_ERROR_INVALID_ARG;
++  }
++
++  nsTArray<nsCString> flavors;
++  nsresult rv = aTransferable->FlavorsTransferableCanImport(flavors);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  for (const auto& flavor : flavors) {
++    nsCOMPtr<nsISupports> data;
++    if (NS_SUCCEEDED(
++            source->GetTransferData(flavor.get(), getter_AddRefs(data)))) {
++      return aTransferable->SetTransferData(flavor.get(), data);
++    }
++  }
++
++  return NS_ERROR_NOT_AVAILABLE;
++}
++
++NS_IMETHODIMP nsDragSession::IsDataFlavorSupported(const char* aFlavor,
++                                                   bool* aSupported) {
++  *aSupported = false;
++  uint32_t count = 0;
++  GetNumDropItems(&count);
++  for (uint32_t i = 0; i < count; ++i) {
++    nsCOMPtr<nsITransferable> item = do_QueryElementAt(mTransferables, i);
++    nsTArray<nsCString> flavors;
++    if (!item || NS_FAILED(item->FlavorsTransferableCanExport(flavors))) {
++      continue;
++    }
++
++    if (flavors.Contains(nsDependentCString(aFlavor))) {
++      *aSupported = true;
++      break;
++    }
++  }
++
++  return NS_OK;
++}
++
++NS_IMETHODIMP nsDragSession::UpdateDragEffect() {
++  nsBaseDragSession::UpdateDragEffect();
++  mDropAction = mDragAction;
++  mCanDrop = mDragAction != nsIDragService::DRAGDROP_ACTION_NONE;
++  return NS_OK;
++}
++
++bool nsDragSession::MustUpdateDataTransfer(mozilla::EventMessage aMessage) {
++  return aMessage == mozilla::eDrop && !HasGeckoSource();
++}

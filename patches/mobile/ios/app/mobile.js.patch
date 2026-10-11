@@ -1,5 +1,5 @@
 diff --git a/mobile/ios/app/mobile.js b/mobile/ios/app/mobile.js
-index e835b1c33d86..4b28818cba05 100644
+index e835b1c33d86..8f97c0df1ee7 100644
 --- a/mobile/ios/app/mobile.js
 +++ b/mobile/ios/app/mobile.js
 @@ -3,7 +3,103 @@
@@ -13,14 +13,14 @@ index e835b1c33d86..4b28818cba05 100644
 +// Block popups by default (bug 436057)
 +pref("dom.disable_open_during_load", true);
 +
-+// Disable autocorrect
-+pref("dom.forms.autocorrect", false);
-+
 +// Enable prelaunching of content processes.
 +pref("dom.ipc.processPrelaunch.enabled", true);
 +
 +// Enable meta-viewport support for font inflation code
 +pref("dom.meta-viewport.enabled", true);
++
++// Keep touch clicks on the element that captured the pointer.
++pref("dom.w3c_pointer_events.dispatch_click_on_pointer_capturing_element.except_touch", false);
 +
 +// Enable WebShare support (bug 1402369)
 +pref("dom.webshare.enabled", true);

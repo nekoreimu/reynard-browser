@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoKeyboardSupport.mm b/widget/uikit/GeckoKeyboardSupport.mm
 new file mode 100644
-index 000000000000..36cdbc8b2c47
+index 000000000000..257293e9621f
 --- /dev/null
 +++ b/widget/uikit/GeckoKeyboardSupport.mm
-@@ -0,0 +1,937 @@
+@@ -0,0 +1,975 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -26,6 +26,11 @@ index 000000000000..36cdbc8b2c47
 +#include "mozilla/TextEvents.h"
 +#include "mozilla/WidgetUtils.h"
 +#include "nsWindow.h"
++
++@interface UIKeyboardImpl : NSObject
+++ (instancetype)sharedInstance;
++- (BOOL)isInHardwareKeyboardMode;
++@end
 +
 +namespace mozilla::widget {
 +
@@ -525,7 +530,8 @@ index 000000000000..36cdbc8b2c47
 +  });
 +}
 +
-+void GeckoKeyboardSupport::StartKeyRepeat(WebEvent* aEvent) {
++void GeckoKeyboardSupport::StartKeyRepeat(WebEvent* aEvent,
++                                          const Maybe<Command>& aCommand) {
 +  if (mKeyRepeatTimer || !IsRepeatableSpecialKey(aEvent)) {
 +    return;
 +  }
@@ -536,6 +542,8 @@ index 000000000000..36cdbc8b2c47
 +  }
 +
 +  mRepeatingEvent = [aEvent retain];
++  mRepeatingCommand = aCommand;
++  mRepeatingModifiers = mCurrentModifiers;
 +  CFRunLoopTimerContext context = {0, this, nullptr, nullptr, nullptr};
 +  mKeyRepeatTimer = CFRunLoopTimerCreate(
 +      kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + interval, interval, 0,
@@ -551,6 +559,7 @@ index 000000000000..36cdbc8b2c47
 +  }
 +  [mRepeatingEvent release];
 +  mRepeatingEvent = nil;
++  mRepeatingCommand.reset();
 +}
 +
 +void GeckoKeyboardSupport::KeyRepeatTimerFired(CFRunLoopTimerRef, void* aInfo) {
@@ -559,6 +568,12 @@ index 000000000000..36cdbc8b2c47
 +
 +void GeckoKeyboardSupport::RepeatKey() {
 +  if (Destroyed() || !mRepeatingEvent) {
++    StopKeyRepeat();
++    return;
++  }
++
++  // If the modifiers change, let the next key event choose the new command.
++  if (mCurrentModifiers != mRepeatingModifiers) {
 +    StopKeyRepeat();
 +    return;
 +  }
@@ -576,7 +591,8 @@ index 000000000000..36cdbc8b2c47
 +  }
 +
 +  RefPtr<TextInputHandler> kungFuDeathGrip(mHandler);
-+  mHandler->DispatchPhysicalKeyDown(mRepeatingEvent, true, false);
++  Maybe<Command> command = mRepeatingCommand;
++  mHandler->DispatchPhysicalKeyDown(mRepeatingEvent, true, false, command);
 +}
 +
 +bool GeckoKeyboardSupport::DispatchKeyUp(WebEvent* aEvent) {
@@ -714,13 +730,18 @@ index 000000000000..36cdbc8b2c47
 +    StopKeyRepeat();
 +  } else if (aEvent.isKeyRepeating && mRepeatingEvent &&
 +             mRepeatingEvent.keyCode == aEvent.keyCode) {
-+    return true;
++    if (mCurrentModifiers == mRepeatingModifiers) {
++      return true;
++    }
++    StopKeyRepeat();
 +  }
 +
 +  RememberKeyDown(aEvent);
-+  bool handled = mHandler->DispatchPhysicalKeyDown(aEvent, false, true);
++  Maybe<Command> command;
++  bool handled =
++      mHandler->DispatchPhysicalKeyDown(aEvent, false, true, command);
 +  if (aEvent.isKeyRepeating && handled && !Destroyed()) {
-+    StartKeyRepeat(aEvent);
++    StartKeyRepeat(aEvent, command);
 +  }
 +  return handled;
 +}
@@ -813,6 +834,7 @@ index 000000000000..36cdbc8b2c47
 +@end
 +
 +@interface ChildView (Keyboard)
++- (BOOL)_disableAutomaticKeyboardUI;
 +- (BOOL)_requiresKeyboardWhenFirstResponder;
 +- (BOOL)_requiresKeyboardResetOnReload;
 +- (void)_handleKeyUIEvent:(UIEvent*)event;
@@ -829,6 +851,15 @@ index 000000000000..36cdbc8b2c47
 +@end
 +
 +@implementation ChildView (Keyboard)
++
++- (BOOL)_disableAutomaticKeyboardUI {
++  if (![self isFirstResponder] || !mGeckoChild || mGeckoChild->Destroyed()) {
++    return NO;
++  }
++
++  // Keep page shortcuts working without showing keyboard UI outside inputs.
++  return mGeckoChild->IsVirtualKeyboardDisabled();
++}
 +
 +- (BOOL)_requiresKeyboardWhenFirstResponder {
 +  if (!mGeckoChild || mGeckoChild->Destroyed()) {
@@ -857,7 +888,14 @@ index 000000000000..36cdbc8b2c47
 +}
 +
 +- (BOOL)requiresKeyEvents {
-+  return mGeckoChild && !mGeckoChild->Destroyed();
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return NO;
++  }
++
++  Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
++  MOZ_RELEASE_ASSERT(keyboardClass);
++  UIKeyboardImpl* keyboard = [keyboardClass sharedInstance];
++  return [keyboard isInHardwareKeyboardMode];
 +}
 +
 +- (void)handleKeyWebEvent:(WebEvent*)event {

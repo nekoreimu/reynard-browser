@@ -1,0 +1,75 @@
+diff --git a/dom/html/nsGenericHTMLElement.cpp b/dom/html/nsGenericHTMLElement.cpp
+index 1a77c71f0521..1bbcd7ea63be 100644
+--- a/dom/html/nsGenericHTMLElement.cpp
++++ b/dom/html/nsGenericHTMLElement.cpp
+@@ -915,15 +915,30 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+       } else {
+         ClearHasName();
+       }
+-    } else if (aName == nsGkAtoms::inputmode ||
+-               aName == nsGkAtoms::enterkeyhint) {
+-      if (nsFocusManager::GetFocusedElementStatic() == this) {
++    } else if (aName == nsGkAtoms::inputmode || aName == nsGkAtoms::enterkeyhint
++#ifdef XP_IOS
++               || aName == nsGkAtoms::autocorrect ||
++               aName == nsGkAtoms::autocapitalize ||
++               aName == nsGkAtoms::writingsuggestions
++#endif
++    ) {
++      const RefPtr<nsGenericHTMLElement> focusedElement =
++          FromNodeOrNull(nsFocusManager::GetFocusedElementStatic());
++      bool updateIME = focusedElement == this;
++#ifdef XP_IOS
++      if (aName == nsGkAtoms::writingsuggestions && focusedElement) {
++        updateIME = focusedElement->IsInclusiveDescendantOf(this);
++      }
++#endif
++
++      if (updateIME) {
+         if (const nsPresContext* presContext =
+-                GetPresContext(eForComposedDoc)) {
++                focusedElement->GetPresContext(eForComposedDoc)) {
+           IMEContentObserver* observer =
+               IMEStateManager::GetActiveContentObserver();
+-          if (observer && observer->IsObserving(*presContext, this)) {
+-            if (const RefPtr<EditorBase> editorBase = GetExtantEditor()) {
++          if (observer && observer->IsObserving(*presContext, focusedElement)) {
++            if (const RefPtr<EditorBase> editorBase =
++                    focusedElement->GetExtantEditor()) {
+               // If the TextControlState does not have a bound frame,
+               // TextEditor::GetPreferredIMEState() may fail.  In such case,
+               // TextEditor will update IME state when it's (re)initialized
+@@ -933,7 +948,7 @@ void nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
+               if (MOZ_LIKELY(newStateOrError.isOk())) {
+                 OwningNonNull<nsGenericHTMLElement> kungFuDeathGrip(*this);
+                 IMEStateManager::UpdateIMEState(
+-                    newStateOrError.unwrap(), kungFuDeathGrip, *editorBase,
++                    newStateOrError.unwrap(), focusedElement, *editorBase,
+                     {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
+                      IMEStateManager::UpdateIMEStateOption::
+                          DontCommitComposition});
+@@ -2580,12 +2595,23 @@ EditorBase* nsGenericHTMLElement::GetAssociatedExtantEditor() const {
+ void nsGenericHTMLElement::SyncSpellCheckerStateOfExtantEditorsOnSubtree(
+     nsIContent& aContent) {
+   /* Sync this node */
+-  if (nsGenericHTMLElement* const element = FromNode(aContent)) {
++  if (const RefPtr<nsGenericHTMLElement> element = FromNode(aContent)) {
+     // SyncRealTimeSpell may run chrome script (bug 2065014). So, for now, we
+     // should keep using strong pointer.
+     if (const RefPtr<EditorBase> editorBase =
+             element->GetAssociatedExtantEditor()) {
+       editorBase->SyncRealTimeSpell();
++#ifdef XP_IOS
++      if (nsFocusManager::GetFocusedElementStatic() == element) {
++        Result<IMEState, nsresult> state = editorBase->GetPreferredIMEState();
++        if (state.isOk()) {
++          IMEStateManager::UpdateIMEState(
++              state.unwrap(), element, *editorBase,
++              {IMEStateManager::UpdateIMEStateOption::ForceUpdate,
++               IMEStateManager::UpdateIMEStateOption::DontCommitComposition});
++        }
++      }
++#endif
+     }
+   }
+ 

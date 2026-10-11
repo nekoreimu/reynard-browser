@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoKeyboardSupport.h b/widget/uikit/GeckoKeyboardSupport.h
 new file mode 100644
-index 000000000000..e36569c7018b
+index 000000000000..d33a843ca0bc
 --- /dev/null
 +++ b/widget/uikit/GeckoKeyboardSupport.h
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,124 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +17,7 @@ index 000000000000..e36569c7018b
 +#import <UIKit/UIKit.h>
 +
 +#include "mozilla/EventForwards.h"
++#include "mozilla/Maybe.h"
 +#include "mozilla/UniquePtr.h"
 +#include "nsStringFwd.h"
 +#include "nsTArray.h"
@@ -108,7 +109,7 @@ index 000000000000..e36569c7018b
 +  bool DispatchHeldKeyUp(const HeldKey& aHeldKey, Modifiers aModifiers);
 +  void RememberKeyDown(WebEvent* aEvent);
 +  void ForgetKeyUp(WebEvent* aEvent);
-+  void StartKeyRepeat(WebEvent* aEvent);
++  void StartKeyRepeat(WebEvent* aEvent, const Maybe<Command>& aCommand);
 +  void StopKeyRepeat();
 +  void RepeatKey();
 +  static void KeyRepeatTimerFired(CFRunLoopTimerRef aTimer, void* aInfo);
@@ -118,6 +119,8 @@ index 000000000000..e36569c7018b
 +  nsTArray<UniquePtr<HeldKey>> mHeldKeys;
 +  CFRunLoopTimerRef mKeyRepeatTimer = nullptr;
 +  WebEvent* mRepeatingEvent = nil;
++  Maybe<Command> mRepeatingCommand;
++  Modifiers mRepeatingModifiers = {};
 +  Modifiers mCurrentModifiers = {};
 +  uint32_t mNextEventId = 0;
 +};

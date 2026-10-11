@@ -1,0 +1,22 @@
+diff --git a/widget/MouseEvents.h b/widget/MouseEvents.h
+index e0e3b70f7181..2dfc6ddf078d 100644
+--- a/widget/MouseEvents.h
++++ b/widget/MouseEvents.h
+@@ -647,6 +647,9 @@ class WidgetDragEvent final : public WidgetMouseEvent {
+   // If this event is currently being handled by HTMLEditorEventListener.
+   bool mInHTMLEditorEventListener;
+ 
++  // Native text dragging can allow drops only in editable text.
++  bool mOnlyEditableText = false;
++
+   // XXX Not tested by test_assign_event_data.html
+   void AssignDragEventData(const WidgetDragEvent& aEvent, bool aCopyTargets) {
+     AssignMouseEventData(aEvent, aCopyTargets);
+@@ -655,6 +658,7 @@ class WidgetDragEvent final : public WidgetMouseEvent {
+     // XXX mUserCancelled isn't copied, is this intentionally?
+     mUserCancelled = false;
+     mDefaultPreventedOnContent = aEvent.mDefaultPreventedOnContent;
++    mOnlyEditableText = aEvent.mOnlyEditableText;
+     // XXX mInHTMLEditorEventListener isn't copied, is this intentionally?
+     mInHTMLEditorEventListener = false;
+   }

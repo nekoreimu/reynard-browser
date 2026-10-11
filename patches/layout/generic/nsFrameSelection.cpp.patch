@@ -1,0 +1,13 @@
+diff --git a/layout/generic/nsFrameSelection.cpp b/layout/generic/nsFrameSelection.cpp
+index 91d2715b0cbc..48ff1fde154b 100644
+--- a/layout/generic/nsFrameSelection.cpp
++++ b/layout/generic/nsFrameSelection.cpp
+@@ -2197,7 +2197,7 @@ nsFrameSelection::CreateRangeExtendedToSomewhere(
+   MOZ_ASSERT(aExtendDirection == eDirNext || aExtendDirection == eDirPrevious);
+   MOZ_ASSERT(aAmount == eSelectCharacter || aAmount == eSelectCluster ||
+              aAmount == eSelectWord || aAmount == eSelectBeginLine ||
+-             aAmount == eSelectEndLine);
++             aAmount == eSelectEndLine || aAmount == eSelectParagraph);
+   MOZ_ASSERT(aMovementStyle == eLogical || aMovementStyle == eVisual ||
+              aMovementStyle == eUsePrefStyle);
+ 

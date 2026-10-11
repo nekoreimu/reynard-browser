@@ -1,0 +1,27 @@
+diff --git a/gfx/layers/apz/src/HitTestingTreeNode.h b/gfx/layers/apz/src/HitTestingTreeNode.h
+index 607d11ac8ca2..24252a7a4c83 100644
+--- a/gfx/layers/apz/src/HitTestingTreeNode.h
++++ b/gfx/layers/apz/src/HitTestingTreeNode.h
+@@ -147,15 +147,19 @@ class HitTestingTreeNode {
+    * the async bits. It's used on the main-thread for transforming coordinates
+    * across a BrowserParent/BrowserChild interface.
+    * |aRemoteLayersId| is the LayersId of the remote subtree for which this
+-   * transform will be used. */
+-  LayerToScreenMatrix4x4 GetTransformToGecko(LayersId aRemoteLayersId) const;
++   * transform will be used. |aRootContentApzc| supplies viewport movement when
++   * the iframe is outside the root scroll frame. */
++  LayerToScreenMatrix4x4 GetTransformToGecko(
++      LayersId aRemoteLayersId,
++      const AsyncPanZoomController* aRootContentApzc) const;
+   const LayerIntRect& GetVisibleRect() const;
+ 
+   /* Returns the screen coordinate rectangle of remote iframe corresponding to
+    * this node. The rectangle is the result of clipped by ancestor async
+    * scrolling. */
+   ScreenRect GetRemoteDocumentScreenRect(
+-      LayersId aRemoteDocumentLayersId) const;
++      LayersId aRemoteDocumentLayersId,
++      const AsyncPanZoomController* aRootContentApzc) const;
+ 
+   Maybe<ScrollableLayerGuid::ViewID> GetAsyncZoomContainerId() const;
+ 

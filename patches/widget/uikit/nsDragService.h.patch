@@ -1,0 +1,51 @@
+diff --git a/widget/uikit/nsDragService.h b/widget/uikit/nsDragService.h
+new file mode 100644
+index 000000000000..1597a35e1deb
+--- /dev/null
++++ b/widget/uikit/nsDragService.h
+@@ -0,0 +1,45 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef widget_uikit_nsDragService_h
++#define widget_uikit_nsDragService_h
++
++#include "nsBaseDragService.h"
++#include "nsIArray.h"
++
++class nsDragSession final : public nsBaseDragSession {
++ public:
++  NS_IMETHOD GetData(nsITransferable* aTransferable, uint32_t aItem) override;
++  NS_IMETHOD GetNumDropItems(uint32_t* aNumItems) override;
++  NS_IMETHOD IsDataFlavorSupported(const char* aFlavor,
++                                   bool* aSupported) override;
++  NS_IMETHOD UpdateDragEffect() override;
++
++  bool MustUpdateDataTransfer(mozilla::EventMessage aMessage) override;
++  void SetTransferables(nsIArray* aTransferables);
++  uint32_t AllowedActions() const { return mAllowedActions; }
++  uint32_t DropAction() const { return mDropAction; }
++  bool HasGeckoSource() const { return mSourceNode != nullptr; }
++
++ protected:
++  MOZ_CAN_RUN_SCRIPT nsresult
++  InvokeDragSessionImpl(nsIWidget* aWidget, nsIArray* aTransferables,
++                        const mozilla::Maybe<mozilla::CSSIntRegion>& aRegion,
++                        uint32_t aActionType) override;
++
++ private:
++  nsCOMPtr<nsIArray> mTransferables;
++  uint32_t mAllowedActions = nsIDragService::DRAGDROP_ACTION_COPY;
++  uint32_t mDropAction = nsIDragService::DRAGDROP_ACTION_NONE;
++};
++
++class nsDragService final : public nsBaseDragService {
++ protected:
++  already_AddRefed<nsIDragSession> CreateDragSession() override;
++};
++
++#endif  // widget_uikit_nsDragService_h

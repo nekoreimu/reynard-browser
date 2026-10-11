@@ -1,0 +1,31 @@
+diff --git a/gfx/layers/ipc/PNativeLayerRemote.ipdl b/gfx/layers/ipc/PNativeLayerRemote.ipdl
+index 79f9c40903a2..4450ea7d2115 100644
+--- a/gfx/layers/ipc/PNativeLayerRemote.ipdl
++++ b/gfx/layers/ipc/PNativeLayerRemote.ipdl
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ include "mozilla/GfxMessageUtils.h";
++include "mozilla/ipc/ByteBufUtils.h";
+ 
+ using struct mozilla::gfx::DeviceColor from "mozilla/gfx/2D.h";
+ using mozilla::gfx::SamplingFilter from "mozilla/gfx/2D.h";
+@@ -24,6 +25,7 @@ union NativeLayerCommand {
+   CommandSetLayers;
+   CommandLayerInfo;
+   CommandChangedSurface;
++  CommandOnscreenCommitData;
+ };
+ 
+ union SurfaceTransfer {
+@@ -77,6 +79,10 @@ struct CommandChangedSurface {
+   IntSize Size;
+ };
+ 
++struct CommandOnscreenCommitData {
++  ByteBuf Data;
++};
++
+ // This protocol allows a NativeLayerRoot implementation on the GPU
+ // to send layer commands to the parent process. It also allows the
+ // GPU to request readback, which the parent will send as a Shmem.

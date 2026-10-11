@@ -1,0 +1,40 @@
+diff --git a/gfx/layers/apz/src/APZSampler.cpp b/gfx/layers/apz/src/APZSampler.cpp
+index 8d7f1bfddfc5..12990f96dd85 100644
+--- a/gfx/layers/apz/src/APZSampler.cpp
++++ b/gfx/layers/apz/src/APZSampler.cpp
+@@ -68,7 +68,7 @@ void APZSampler::SampleForWebRender(const wr::WrWindowId& aWindowId,
+     wr::TransactionWrapper txn(aTransaction);
+     Maybe<VsyncId> vsyncId =
+         aGeneratedFrameId ? Some(VsyncId{*aGeneratedFrameId}) : Nothing();
+-    sampler->SampleForWebRender(vsyncId, txn);
++    sampler->SampleForWebRender(aWindowId, vsyncId, txn);
+   }
+ }
+ 
+@@ -81,7 +81,8 @@ void APZSampler::SetSampleTime(const SampleTime& aSampleTime) {
+   mSampleTime = aSampleTime;
+ }
+ 
+-void APZSampler::SampleForWebRender(const Maybe<VsyncId>& aVsyncId,
++void APZSampler::SampleForWebRender(const wr::WrWindowId& aWindowId,
++                                    const Maybe<VsyncId>& aVsyncId,
+                                     wr::TransactionWrapper& aTxn) {
+   AssertOnSamplerThread();
+   SampleTime sampleTime;
+@@ -95,8 +96,15 @@ void APZSampler::SampleForWebRender(const Maybe<VsyncId>& aVsyncId,
+     SampleTime now = SampleTime::FromNow();
+     sampleTime = mSampleTime.IsNull() ? now : mSampleTime;
+   }
+-  mApz->SampleForWebRender(aVsyncId, aTxn, sampleTime);
++  mApz->SampleForWebRender(aWindowId, aVsyncId, aTxn, sampleTime);
++}
++
++#ifdef MOZ_WIDGET_UIKIT
++void APZSampler::SetNativeTextInputScrollers(
++    const nsTArray<ScrollableLayerGuid>& aScrollers) {
++  mApz->SetNativeTextInputScrollers(aScrollers);
+ }
++#endif
+ 
+ AsyncTransform APZSampler::GetCurrentAsyncTransform(
+     const LayersId& aLayersId, const ScrollableLayerGuid::ViewID& aScrollId,

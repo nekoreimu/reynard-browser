@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..5dbbe142d4f3 100644
+index e68fca9134c0..8521be93523e 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
 @@ -21,11 +21,68 @@
@@ -71,7 +71,7 @@ index e68fca9134c0..5dbbe142d4f3 100644
  @end
  
  @protocol GeckoProcessExtension <NSObject>
-@@ -33,38 +90,69 @@
+@@ -33,38 +90,71 @@
  @end
  
  @protocol EventCallback <NSObject>
@@ -118,10 +118,12 @@ index e68fca9134c0..5dbbe142d4f3 100644
 +- (void)setContentOffsets:(CGFloat)top
 +                   bottom:(CGFloat)bottom
 +                 topInset:(CGFloat)topInset
-+              bottomInset:(CGFloat)bottomInset;
++              bottomInset:(CGFloat)bottomInset
++      contentTranslationY:(CGFloat)contentTranslationY;
 +- (void)updateScreenOrientation:(NSInteger)interfaceOrientation;
 +
 +// Keyboard
++- (void)dismissSoftwareKeyboard;
 +- (BOOL)focusForHardwareKeyboard;
 +- (BOOL)isInHardwareKeyboardMode;
 +

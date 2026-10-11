@@ -1,8 +1,30 @@
 diff --git a/gfx/webrender_bindings/src/bindings.rs b/gfx/webrender_bindings/src/bindings.rs
-index e71a9dbe516c..bf856e6d4a1a 100644
+index e71a9dbe516c..0e5c3ca5189b 100644
 --- a/gfx/webrender_bindings/src/bindings.rs
 +++ b/gfx/webrender_bindings/src/bindings.rs
-@@ -3011,7 +3011,12 @@ fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
+@@ -1128,7 +1128,11 @@ impl AsyncPropertySampler for SamplerCallback {
+         }
+     }
+ 
+-    fn sample(&self, _document_id: DocumentId, generated_frame_id: Option<u64>) -> Vec<FrameMsg> {
++    fn sample(
++        &self,
++        _document_id: DocumentId,
++        generated_frame_id: Option<u64>,
++    ) -> (Vec<FrameMsg>, Vec<NotificationRequest>) {
+         let generated_frame_id_value;
+         let generated_frame_id: *const u64 = match generated_frame_id {
+             Some(id) => {
+@@ -1145,7 +1149,7 @@ impl AsyncPropertySampler for SamplerCallback {
+             apz_sample_transforms(self.window_id, generated_frame_id, &mut transaction);
+             omta_sample(self.window_id, &mut transaction);
+         };
+-        transaction.get_frame_ops()
++        transaction.get_frame_ops_and_notifications()
+     }
+ 
+     fn deregister(&self) {
+@@ -3011,7 +3015,12 @@ fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
  }
  
  #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -16,7 +38,7 @@ index e71a9dbe516c..bf856e6d4a1a 100644
      // On macOS, the descriptor string is a concatenation of the PostScript name
      // and the font file path (to disambiguate cases where there are multiple
      // faces with the same psname present). The index is the length of the psname
-@@ -3021,6 +3026,8 @@ fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
+@@ -3021,6 +3030,8 @@ fn read_font_descriptor(bytes: &mut WrVecU8, index: u32) -> NativeFontHandle {
      NativeFontHandle {
          name: String::from_utf8(chars[..index as usize].to_vec()).unwrap_or("".to_string()),
          path: String::from_utf8(chars[index as usize..].to_vec()).unwrap_or("".to_string()),
@@ -25,7 +47,7 @@ index e71a9dbe516c..bf856e6d4a1a 100644
      }
  }
  
-@@ -3039,8 +3046,18 @@ pub extern "C" fn wr_resource_updates_add_font_descriptor(
+@@ -3039,8 +3050,18 @@ pub extern "C" fn wr_resource_updates_add_font_descriptor(
      key: WrFontKey,
      bytes: &mut WrVecU8,
      index: u32,

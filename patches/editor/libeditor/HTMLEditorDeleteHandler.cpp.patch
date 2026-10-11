@@ -1,0 +1,24 @@
+diff --git a/editor/libeditor/HTMLEditorDeleteHandler.cpp b/editor/libeditor/HTMLEditorDeleteHandler.cpp
+index 70999b09c4ca..c9b8d75b3ec0 100644
+--- a/editor/libeditor/HTMLEditorDeleteHandler.cpp
++++ b/editor/libeditor/HTMLEditorDeleteHandler.cpp
+@@ -7448,7 +7448,8 @@ nsresult HTMLEditor::AutoDeleteRangesHandler::AutoEmptyBlockAncestorDeleter::
+     }
+     case nsIEditor::eNext:
+     case nsIEditor::eNextWord:
+-    case nsIEditor::eToEndOfLine: {
++    case nsIEditor::eToEndOfLine:
++    case nsIEditor::eToEndOfParagraph: {
+       EditorRawDOMPoint endPoint =
+           HTMLEditUtils::GetNextEditablePoint<EditorRawDOMPoint>(
+               *mEmptyInclusiveAncestorBlockElement, &aEditingHost,
+@@ -7551,7 +7552,8 @@ Result<CaretPoint, nsresult> HTMLEditor::AutoDeleteRangesHandler::
+   switch (aDirectionAndAmount) {
+     case nsIEditor::eNext:
+     case nsIEditor::eNextWord:
+-    case nsIEditor::eToEndOfLine: {
++    case nsIEditor::eToEndOfLine:
++    case nsIEditor::eToEndOfParagraph: {
+       // Collapse Selection to next node of after empty block element
+       // if there is.  Otherwise, to just after the empty block.
+       nsIContent* const nextContentOfEmptyBlock = [&]() -> nsIContent* {

@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/UIKitCompositorWidget.cpp b/widget/uikit/UIKitCompositorWidget.cpp
 new file mode 100644
-index 000000000000..ad4d94372f7b
+index 000000000000..d580e0fa4daa
 --- /dev/null
 +++ b/widget/uikit/UIKitCompositorWidget.cpp
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,124 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,8 +15,13 @@ index 000000000000..ad4d94372f7b
 +
 +#include <algorithm>
 +
++#include "ipc/nsGUIEventIPC.h"
 +#include "mozilla/layers/NativeLayer.h"
 +#include "mozilla/layers/NativeLayerRootRemoteMacChild.h"
++#include "mozilla/webrender/RenderCompositor.h"
++#include "mozilla/webrender/RenderThread.h"
++#include "mozilla/webrender/RendererOGL.h"
++#include "mozilla/webrender/WebRenderAPI.h"
 +#include "mozilla/widget/PlatformWidgetTypes.h"
 +
 +namespace mozilla {
@@ -64,6 +69,61 @@ index 000000000000..ad4d94372f7b
 +  auto remoteChild = root->GetRemoteChild();
 +  MOZ_ALWAYS_TRUE(mChildEndpoint.Bind(remoteChild));
 +  mNativeLayerRoot = std::move(root);
++}
++
++namespace {
++
++class NativeTextInputScrollNotification final : public wr::NotificationHandler {
++ public:
++  NativeTextInputScrollNotification(
++      wr::WindowId aWindowId,
++      const nsTArray<NativeTextInputScrollUpdate>& aUpdates)
++      : mWindowId(aWindowId) {
++    // Keep the scroll data in the same commit as the rendered layers.
++    IPC::Message message(0, 0, 0);
++    IPC::MessageWriter writer(message);
++    IPC::WriteParam(&writer, aUpdates);
++
++    const auto& buffers = message.Buffers();
++    if (!mData.Allocate(buffers.Size())) {
++      mozalloc_handle_oom(buffers.Size());
++    }
++    auto iter = buffers.Iter();
++    MOZ_ALWAYS_TRUE(buffers.ReadBytes(
++        iter, reinterpret_cast<char*>(mData.mData), mData.mLen));
++  }
++
++  void Notify(wr::Checkpoint aCheckpoint) override {
++    if (aCheckpoint != wr::Checkpoint::FrameTexturesUpdated) {
++      return;
++    }
++
++    auto* renderer = wr::RenderThread::Get()->GetRenderer(mWindowId);
++    if (!renderer) {
++      return;
++    }
++
++    auto* root = renderer->GetCompositor()->GetWidget()->GetNativeLayerRoot();
++    if (!root) {
++      return;
++    }
++
++    root->SetOnscreenCommitData(std::move(mData));
++  }
++
++ private:
++  wr::WindowId mWindowId;
++  mozilla::ipc::ByteBuf mData;
++};
++
++}  // namespace
++
++void AttachNativeTextInputScrollUpdates(
++    wr::WindowId aWindowId, wr::TransactionWrapper& aTransaction,
++    const nsTArray<NativeTextInputScrollUpdate>& aUpdates) {
++  aTransaction.Notify(
++      wr::Checkpoint::FrameTexturesUpdated,
++      MakeUnique<NativeTextInputScrollNotification>(aWindowId, aUpdates));
 +}
 +
 +}  // namespace widget

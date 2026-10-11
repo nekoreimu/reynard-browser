@@ -1,0 +1,12 @@
+diff --git a/editor/libeditor/EditorUtils.h b/editor/libeditor/EditorUtils.h
+index c591462a70f6..66cdf8048ae3 100644
+--- a/editor/libeditor/EditorUtils.h
++++ b/editor/libeditor/EditorUtils.h
+@@ -512,6 +512,7 @@ class EditorUtils final {
+       case nsIEditor::ePreviousWord:
+       case nsIEditor::eToBeginningOfLine:
+       case nsIEditor::eToEndOfLine:
++      case nsIEditor::eToEndOfParagraph:
+         return true;
+       case nsIEditor::ePrevious:
+       case nsIEditor::eNext:

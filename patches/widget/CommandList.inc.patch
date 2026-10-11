@@ -1,0 +1,12 @@
+diff --git a/widget/CommandList.inc b/widget/CommandList.inc
+index fe99dc00b5b1..7735ce64bc3a 100644
+--- a/widget/CommandList.inc
++++ b/widget/CommandList.inc
+@@ -34,6 +34,7 @@ NS_DEFINE_COMMAND(DeleteCharBackward, cmd_deleteCharBackward)
+ NS_DEFINE_COMMAND(DeleteCharForward, cmd_deleteCharForward)
+ NS_DEFINE_COMMAND(DeleteToBeginningOfLine, cmd_deleteToBeginningOfLine)
+ NS_DEFINE_COMMAND(DeleteToEndOfLine, cmd_deleteToEndOfLine)
++NS_DEFINE_COMMAND(DeleteToEndOfParagraph, cmd_deleteToEndOfParagraph)
+ NS_DEFINE_COMMAND(DeleteWordBackward, cmd_deleteWordBackward)
+ NS_DEFINE_COMMAND(DeleteWordForward, cmd_deleteWordForward)
+ NS_DEFINE_COMMAND(EndLine, cmd_endLine)

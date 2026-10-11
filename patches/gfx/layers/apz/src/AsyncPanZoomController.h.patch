@@ -1,8 +1,44 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.h b/gfx/layers/apz/src/AsyncPanZoomController.h
-index da535461efb0..a79759f048d9 100644
+index da535461efb0..fdea48b6b0f2 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.h
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.h
-@@ -1963,11 +1963,15 @@ class AsyncPanZoomController {
+@@ -40,6 +40,8 @@
+ 
+ namespace mozilla {
+ 
++struct NativeTextInputScrollUpdate;
++
+ namespace ipc {
+ 
+ class SharedMemory;
+@@ -1349,6 +1351,10 @@ class AsyncPanZoomController {
+     return Metrics().GetLayoutScrollOffset();
+   }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  NativeTextInputScrollUpdate GetNativeTextInputScrollUpdate() const;
++#endif
++
+   // Returns the delta for the given InputData.
+   ParentLayerPoint GetDeltaForEvent(const InputData& aEvent) const;
+ 
+@@ -1593,7 +1599,6 @@ class AsyncPanZoomController {
+   /**
+    * Internal helpers for checking general state of this apzc.
+    */
+-  bool IsInTransformingState() const;
+   static bool IsTransformingState(PanZoomState aState);
+ 
+   /* ===================================================================
+@@ -1921,6 +1926,7 @@ class AsyncPanZoomController {
+ 
+  public:
+   bool IsInPanningState() const;
++  bool IsInTransformingState() const;
+ 
+   // Returns whether being in the middle of a gesture. E.g., this APZC has
+   // started handling a pan gesture but hasn't yet received pan-end, etc.
+@@ -1963,11 +1969,15 @@ class AsyncPanZoomController {
      return mState == PINCHING || mState == ANIMATING_ZOOM;
    }
  

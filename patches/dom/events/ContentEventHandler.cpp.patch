@@ -1,8 +1,8 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index d11a218cd050..022fd510ad62 100644
+index d11a218cd050..487e43795858 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
-@@ -6,6 +6,9 @@
+@@ -6,43 +6,60 @@
  
  #include <algorithm>
  
@@ -12,7 +12,36 @@ index d11a218cd050..022fd510ad62 100644
  #include "mozilla/Assertions.h"
  #include "mozilla/CheckedInt.h"
  #include "mozilla/ContentIterator.h"
-@@ -33,6 +36,7 @@
++#include "mozilla/EditorBase.h"
++#include "mozilla/EditorCommands.h"
++#include "mozilla/EventStateManager.h"
+ #include "mozilla/IMEStateManager.h"
+ #include "mozilla/IntegerRange.h"
+ #include "mozilla/Maybe.h"
+ #include "mozilla/MiscEvents.h"
++#include "mozilla/MouseEvents.h"
++#include "mozilla/NativeTextInput.h"
+ #include "mozilla/PresShell.h"
+ #include "mozilla/RangeBoundary.h"
+ #include "mozilla/RangeUtils.h"
+ #include "mozilla/SelectionMovementUtils.h"
+ #include "mozilla/TextComposition.h"
++#include "mozilla/TextControlElement.h"
+ #include "mozilla/TextEditor.h"
+ #include "mozilla/TextEvents.h"
+ #include "mozilla/ViewportUtils.h"
++#include "mozilla/dom/BrowserChild.h"
+ #include "mozilla/dom/CharacterDataBuffer.h"
+ #include "mozilla/dom/EditContext.h"
+ #include "mozilla/dom/Element.h"
+ #include "mozilla/dom/HTMLBRElement.h"
+ #include "mozilla/dom/HTMLUnknownElement.h"
++#include "mozilla/dom/MouseEventBinding.h"
+ #include "mozilla/dom/Selection.h"
+ #include "mozilla/dom/StaticRange.h"
+ #include "mozilla/dom/Text.h"
++#include "nsBidiPresUtils.h"
+ #include "nsCOMPtr.h"
  #include "nsCaret.h"
  #include "nsContentUtils.h"
  #include "nsCopySupport.h"
@@ -20,7 +49,13 @@ index d11a218cd050..022fd510ad62 100644
  #include "nsElementTable.h"
  #include "nsFocusManager.h"
  #include "nsFontMetrics.h"
-@@ -43,6 +47,7 @@
+ #include "nsFrameSelection.h"
+ #include "nsHTMLTags.h"
++#include "nsIDragSession.h"
+ #include "nsIFrame.h"
++#include "nsIFrameInlines.h"
++#include "nsILineIterator.h"
+ #include "nsLayoutUtils.h"
  #include "nsPresContext.h"
  #include "nsQueryObject.h"
  #include "nsRange.h"
@@ -28,33 +63,1283 @@ index d11a218cd050..022fd510ad62 100644
  #include "nsTextFrame.h"
  
  // Work around conflicting define in rpcndr.h
-@@ -443,6 +448,9 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
+@@ -443,6 +460,1271 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
    return rangeInRootElement;
  }
  
 +static nsTextControlFrame* GetFocusedTextControlFrameForRoot(
 +    Element* aRootElement);
 +
++static bool IsNativeTextInputImage(const nsIContent& aContent) {
++#ifdef XP_IOS
++  return aContent.IsHTMLElement(nsGkAtoms::img) &&
++         aContent.GetInclusiveEditableAncestor();
++#else
++  return false;
++#endif
++}
++
++// Hide native selection UI for hidden inputs
++static bool ShouldSuppressNativeSelectionDisplay(nsIFrame* aFrame) {
++  if (!aFrame || !aFrame->IsVisibleConsideringAncestors()) {
++    return true;
++  }
++
++  nsRect rect = nsLayoutUtils::GetAllInFlowRectsUnion(aFrame, aFrame);
++  const CSSRect bounds = CSSRect::FromAppUnits(rect);
++
++  // Hide on tiny editors (borrowed this from WebKit btw)
++  if (bounds.width * bounds.height < 4) {
++    return true;
++  }
++
++  for (nsIFrame* frame = aFrame; frame;) {
++    if (frame->StyleEffects()->IsTransparent()) {
++      return true;
++    }
++
++    if (auto clip = frame->GetClipPropClipRect(
++            frame->StyleDisplay(), frame->StyleEffects(), frame->GetSize())) {
++      rect = rect.Intersect(*clip);
++    }
++
++    const PhysicalAxes axes =
++        frame->ShouldApplyOverflowClipping(frame->StyleDisplay());
++    ScrollContainerFrame* scroll = do_QueryFrame(frame);
++    if (!scroll && !axes.isEmpty()) {
++      nsRect clip;
++      nsRectCornerRadii radii;
++      nsMargin inset;
++      frame->ComputeOverflowClipRectRelativeToSelf(axes, clip, radii, inset);
++      rect = rect.Intersect(clip);
++    }
++
++    if (rect.IsEmpty()) {
++      return true;
++    }
++
++    nsIFrame* parent = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame);
++    if (!parent) {
++      break;
++    }
++
++    rect = nsLayoutUtils::TransformFrameRectToAncestor(frame, rect, parent);
++    frame = parent;
++  }
++
++  return false;
++}
++
++static void CollectNativeScrollReferences(
++    nsIFrame* aFrame, nsTArray<NativeTextInputScrollReference>& aReferences) {
++  nsPresContext* context =
++      aFrame->PresContext()->GetInProcessRootContentDocumentPresContext();
++  if (!context) {
++    return;
++  }
++
++  PresShell* shell = context->PresShell();
++  nsIFrame* root = shell->GetRootFrame();
++  auto* rootScroll = shell->GetRootScrollContainerFrame();
++  const float resolution = shell->GetResolution();
++  bool hasRoot = false;
++
++  auto append = [&](ScrollContainerFrame* aScroll, bool aFixed) {
++    BrowserChild* browser = BrowserChild::GetFrom(aScroll->PresShell());
++    if (!browser || !aScroll->GetContent()) {
++      return;
++    }
++
++    NativeTextInputScrollReference reference;
++    reference.mGuid = layers::ScrollableLayerGuid(
++        browser->GetLayersId(), aScroll->PresShell()->GetPresShellId(),
++        nsLayoutUtils::FindOrCreateIDFor(aScroll->GetContent()));
++    reference.mGeneration = aScroll->CurrentScrollGeneration();
++
++    const auto matrix = nsLayoutUtils::GetTransformToAncestor(
++        RelativeTo{aScroll}, RelativeTo{root});
++    const float scale = aScroll->PresContext()->CSSToDevPixelScale().scale;
++    const gfx::Point origin = matrix.TransformPoint(gfx::Point());
++    const gfx::Point x = matrix.TransformPoint(gfx::Point(scale, 0)) - origin;
++    const gfx::Point y = matrix.TransformPoint(gfx::Point(0, scale)) - origin;
++    reference.mXAxis = LayoutDevicePoint(x.x, x.y) * resolution;
++    reference.mYAxis = LayoutDevicePoint(y.x, y.y) * resolution;
++    reference.mOffset = aScroll->GetScrollPositionCSSPixels();
++
++    if (aScroll == rootScroll) {
++      reference.mZoom = scale * resolution;
++      reference.mFixed = aFixed;
++      const CSSPoint callback =
++          nsLayoutUtils::GetCumulativeApzCallbackTransform(aScroll);
++      reference.mOffset = aFixed ? callback : reference.mOffset + callback;
++      hasRoot = true;
++    }
++    aReferences.AppendElement(reference);
++  };
++
++  for (nsIFrame* frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(aFrame);
++       frame; frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
++    if (ScrollContainerFrame* scroll = do_QueryFrame(frame)) {
++      append(scroll, false);
++    }
++  }
++
++  if (!hasRoot && rootScroll) {
++    append(rootScroll, true);
++  }
++}
++
++nsresult ContentEventHandler::QueryNativeTextInput(
++    const NativeTextInputRequest& aRequest, NativeTextInputReply& aReply) {
++  aReply = NativeTextInputReply();
++  nsresult rv = InitCommon(eQuerySelectedText);
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ENSURE_TRUE(mRootElement, NS_ERROR_NOT_AVAILABLE);
++  NS_ENSURE_TRUE(mDocument->GetPresContext(), NS_ERROR_NOT_AVAILABLE);
++  nsIWidget* widget = mDocument->GetPresContext()->GetRootWidget();
++  NS_ENSURE_TRUE(widget, NS_ERROR_NOT_AVAILABLE);
++
++  aReply.mEditable = mRootElement->IsEditable();
++  aReply.mSelectable = aReply.mEditable;
++  if (nsTextControlFrame* control =
++          GetFocusedTextControlFrameForRoot(mRootElement)) {
++    aReply.mEditable = !control->ControlElement()->IsDisabledOrReadOnly();
++    aReply.mSelectable = !control->ControlElement()->IsDisabled();
++  }
++
++  // Convert frame app unit to root widget device pixel, then account
++  // for the visual viewport.
++  auto visualRect = [&](nsIFrame* aFrame, nsRect aRect,
++                        NativeTextInputRect& aResult) -> nsresult {
++    nsPresContext* context = aFrame->PresContext();
++    aResult.mUntransformedRect =
++        LayoutDeviceRect::FromAppUnits(aRect, context->AppUnitsPerDevPixel());
++    Maybe<gfx::Matrix> transform;
++    nsresult result = ConvertToRootRelativeOffset(aFrame, aRect, &transform);
++    NS_ENSURE_SUCCESS(result, result);
++    aResult.mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
++        aRect, context->AppUnitsPerDevPixel());
++    if (nsPresContext* root =
++            context->GetInProcessRootContentDocumentPresContext()) {
++      aResult.mRect = RoundedOut(ViewportUtils::DocumentRelativeLayoutToVisual(
++          aResult.mRect, root->PresShell()));
++      if (transform) {
++        auto* scroll = root->PresShell()->GetRootScrollContainerFrame();
++        const auto visualToLayout =
++            ViewportUtils::GetVisualToLayoutTransform<LayoutDevicePixel>(
++                scroll ? scroll->GetContent() : nullptr);
++        gfx::Matrix viewport;
++        if (visualToLayout.Inverse().Is2D(&viewport)) {
++          *transform *= viewport;
++        } else {
++          transform.reset();
++        }
++      }
++    }
++
++    if (transform) {
++      aResult.mTransform = *transform;
++    } else {
++      aResult.mUntransformedRect = LayoutDeviceRect(aResult.mRect);
++    }
++    CollectNativeScrollReferences(aFrame, aResult.mScrollReferences);
++    return NS_OK;
++  };
++
++  // At a line wrap or where text changes direction, keep the caret on the
++  // side UIKit asked for.
++  auto frameAtOffset = [&](uint32_t aOffset, bool aAssociateWithNext,
++                           FrameAndOffset& aResult) -> nsresult {
++    auto rangeOrError = ConvertFlatTextOffsetToDOMRange(aOffset, 0, false);
++    if (rangeOrError.isErr()) {
++      return rangeOrError.unwrapErr();
++    }
++
++    auto range = rangeOrError.unwrap();
++    nsresult result = AdjustCollapsedRangeMaybeIntoTextNode(range.mRange);
++    NS_ENSURE_SUCCESS(result, result);
++    nsIContent* content =
++        nsIContent::FromNode(range.mRange.GetStartContainer());
++    NS_ENSURE_TRUE(content, NS_ERROR_NOT_AVAILABLE);
++    const CaretAssociationHint hint = aAssociateWithNext
++                                          ? CaretAssociationHint::After
++                                          : CaretAssociationHint::Before;
++    nsFrameSelection* selection = mSelection->GetFrameSelection();
++    NS_ENSURE_TRUE(selection, NS_ERROR_NOT_AVAILABLE);
++    aResult = SelectionMovementUtils::GetCaretFrameForNodeOffset(
++        selection, content, range.mRange.StartOffset(), hint,
++        intl::BidiEmbeddingLevel(BIDI_LEVEL_UNDEFINED),
++        aReply.mEditable ? ForceEditableRegion::Yes : ForceEditableRegion::No);
++    return aResult ? NS_OK : NS_ERROR_NOT_AVAILABLE;
++  };
++
++  // Get the caret rect even when Gecko isn't drawing its own caret.
++  auto caretAtOffset = [&](uint32_t aOffset, bool aAssociateWithNext,
++                           NativeTextInputRect& aRect) -> nsresult {
++    FrameAndOffset frame;
++    nsresult result = frameAtOffset(aOffset, aAssociateWithNext, frame);
++    NS_ENSURE_SUCCESS(result, result);
++    nscoord bidiIndicator;
++    nsRect rect = nsCaret::GetGeometryForFrame(
++        frame.mFrame, frame.mOffsetInFrameContent, &bidiIndicator);
++    aRect.mRTL =
++        frame->GetEmbeddingLevel().Direction() == intl::BidiDirection::RTL;
++    aRect.mVertical = frame->GetWritingMode().IsVertical();
++    return visualRect(frame.mFrame, rect, aRect);
++  };
++
++  if (aRequest.mQuery == NativeTextInputQuery::State ||
++      aRequest.mQuery == NativeTextInputQuery::Appearance) {
++    nsIFrame* editorFrame = mRootElement->GetPrimaryFrame();
++    if (nsTextControlFrame* control =
++            GetFocusedTextControlFrameForRoot(mRootElement)) {
++      editorFrame = control;
++    }
++    aReply.mSuppressSelectionDisplay =
++        ShouldSuppressNativeSelectionDisplay(editorFrame);
++
++    // Find the scrollable areas containing the field and selection ends.
++    auto appendScrollers = [&](nsIFrame* aFrame) {
++      for (nsIFrame* frame = aFrame; frame;
++           frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
++        ScrollContainerFrame* scroll = do_QueryFrame(frame);
++        if (!scroll || !scroll->GetContent()) {
++          continue;
++        }
++
++        BrowserChild* browser = BrowserChild::GetFrom(frame->PresShell());
++        if (!browser) {
++          continue;
++        }
++
++        layers::ScrollableLayerGuid guid(
++            browser->GetLayersId(), frame->PresShell()->GetPresShellId(),
++            nsLayoutUtils::FindOrCreateIDFor(scroll->GetContent()));
++        if (!aReply.mSelectionScrollers.Contains(guid)) {
++          aReply.mSelectionScrollers.AppendElement(guid);
++        }
++      }
++    };
++
++    appendScrollers(editorFrame);
++    nsRect caretRect;
++    appendScrollers(mSelection->GetSelectionAnchorGeometry(
++        nsISelectionController::SELECTION_ANCHOR_REGION, &caretRect));
++    appendScrollers(mSelection->GetSelectionAnchorGeometry(
++        nsISelectionController::SELECTION_FOCUS_REGION, &caretRect));
++
++    // Let UIKit choose the color for auto, but keep an explicit transparent
++    // color.
++    const auto caret =
++        nsCaret::GetFrameAndOffset(nsCaret::CaretPositionFor(mSelection));
++    if (caret.mFrame) {
++      aReply.mCaretColor =
++          caret.mFrame->GetCaretColorAt(caret.mOffsetInFrameContent);
++      aReply.mCaretColorIsAuto = caret.mFrame->StyleUI()->mCaretColor.IsAuto();
++    }
++  }
++
++  switch (aRequest.mQuery) {
++    case NativeTextInputQuery::State: {
++      if (aReply.mEditable) {
++        if (RefPtr<EditorBase> editor =
++                nsContentUtils::GetActiveEditor(mDocument->GetPresContext())) {
++          if (!editor->GetComposition()) {
++            aReply.mCanUndo = editor->CanUndo();
++            aReply.mCanRedo = editor->CanRedo();
++          }
++
++          RefPtr<EditorCommand> command = StyleUpdatingCommand::GetInstance();
++          aReply.mCanFormat =
++              command->IsCommandEnabled(Command::FormatBold, editor);
++        }
++      }
++
++      if (nsTextControlFrame* control =
++              GetFocusedTextControlFrameForRoot(mRootElement)) {
++        control->ControlElement()->GetTextEditorValue(aReply.mText);
++        aReply.mHasText = !aReply.mText.IsEmpty();
++      } else {
++        rv = GenerateFlatTextContent(mRootElement, aReply.mText);
++        NS_ENSURE_SUCCESS(rv, rv);
++
++        // Empty blocks add line breaks to flat text but have no text to select.
++        aReply.mHasText = nsContentUtils::HasNonEmptyTextContent(
++            mRootElement, nsContentUtils::eRecurseIntoChildren);
++      }
++
++      if (mFirstSelectedSimpleRange.IsPositioned()) {
++        auto start = GetStartOffset(mFirstSelectedSimpleRange);
++        if (start.isErr()) {
++          return start.unwrapErr();
++        }
++
++        nsAutoString selectedText;
++        rv = GenerateFlatTextContent(mFirstSelectedSimpleRange, selectedText);
++        NS_ENSURE_SUCCESS(rv, rv);
++        aReply.mSelectionStart = start.unwrap();
++        aReply.mSelectionLength = selectedText.Length();
++        aReply.mAssociateWithNext =
++            mSelection->GetFrameSelection()->GetHint() ==
++            CaretAssociationHint::After;
++      }
++
++      WidgetQueryContentEvent editor(true, eQueryEditorRect, widget);
++      rv = OnQueryEditorRect(&editor, &aReply);
++      NS_ENSURE_SUCCESS(rv, rv);
++      break;
++    }
++    case NativeTextInputQuery::Appearance: {
++      WidgetQueryContentEvent editor(true, eQueryEditorRect, widget);
++      rv = OnQueryEditorRect(&editor, &aReply);
++      NS_ENSURE_SUCCESS(rv, rv);
++      NS_ENSURE_TRUE(editor.Succeeded(), NS_ERROR_NOT_AVAILABLE);
++      break;
++    }
++    case NativeTextInputQuery::Caret: {
++      NativeTextInputRect caret;
++      rv = caretAtOffset(aRequest.mOffset, aRequest.mAssociateWithNext, caret);
++      NS_ENSURE_SUCCESS(rv, rv);
++      aReply.mRect = caret.mRect;
++      aReply.mScrollReferences = caret.mScrollReferences.Clone();
++      aReply.mRTL = caret.mRTL;
++      aReply.mCaretRects.AppendElement(std::move(caret));
++      break;
++    }
++    case NativeTextInputQuery::SelectionRects:
++    case NativeTextInputQuery::SelectionHighlightRects: {
++      if (!aRequest.mLength ||
++          aRequest.mLength > UINT32_MAX - aRequest.mOffset) {
++        return NS_ERROR_INVALID_ARG;
++      }
++
++      auto rangeOrError = ConvertFlatTextOffsetToDOMRange(
++          aRequest.mOffset, aRequest.mLength, true);
++      if (rangeOrError.isErr()) {
++        return rangeOrError.unwrapErr();
++      }
++
++      auto range = rangeOrError.unwrap();
++
++      bool normalizeLines =
++          aRequest.mQuery == NativeTextInputQuery::SelectionHighlightRects;
++      nsIFrame* lineBlock = nullptr;
++      int32_t lineNumber = 0;
++      auto lineForFrame =
++          [&](nsIFrame* aFrame) -> std::pair<nsIFrame*, int32_t> {
++        auto [block, child] = aFrame->GetContainingBlockForLine(true);
++        if (!block || !block->IsBlockFrame()) {
++          return {nullptr, -1};
++        }
++
++        // A non-editable inline block belongs to the surrounding text line.
++        while (block->IsInlineOutside() && block->GetContent() &&
++               !block->GetContent()->IsEditable()) {
++          auto [parentBlock, parentChild] =
++              block->GetContainingBlockForLine(true);
++          if (!parentBlock || !parentBlock->IsBlockFrame()) {
++            break;
++          }
++          block = parentBlock;
++          child = parentChild;
++        }
++
++        nsILineIterator* lines = block->GetLineIterator();
++        if (!lines->GetNumLines()) {
++          return {nullptr, -1};
++        }
++
++        // Start searching at the previous line. If the text appears in a
++        // different order, try again from the beginning.
++        const int32_t searchStart = block == lineBlock ? lineNumber : 0;
++        int32_t line = lines->FindLineContaining(child, searchStart);
++        if (line < 0 && searchStart > 0) {
++          line = lines->FindLineContaining(child);
++        }
++        if (line >= 0) {
++          lineBlock = block;
++          lineNumber = line;
++        }
++        return {block, line};
++      };
++
++      std::pair<nsIFrame*, int32_t> startLine(nullptr, -1);
++      std::pair<nsIFrame*, int32_t> endLine(nullptr, -1);
++
++      // At a line wrap, use the side inside the selection for each handle.
++      // Keep the original height when only one line is selected.
++      if (normalizeLines) {
++        FrameAndOffset endpoint;
++        rv = frameAtOffset(aRequest.mOffset, true, endpoint);
++        NS_ENSURE_SUCCESS(rv, rv);
++        startLine = lineForFrame(endpoint.mFrame);
++
++        rv =
++            frameAtOffset(aRequest.mOffset + aRequest.mLength, false, endpoint);
++        NS_ENSURE_SUCCESS(rv, rv);
++        endLine = lineForFrame(endpoint.mFrame);
++        normalizeLines = startLine != endLine;
++      }
++
++      nsIFrame* previousBlock = nullptr;
++      nsIFrame* previousRectFrame = nullptr;
++      int32_t previousLine = -1;
++      bool previousInterior = false;
++      UnsafePreContentIterator iter;
++      rv = iter.Init(range.mRange.Start().AsRaw(), range.mRange.End().AsRaw());
++      NS_ENSURE_SUCCESS(rv, rv);
++
++      for (; !iter.IsDone(); iter.Next()) {
++        nsIContent* content = nsIContent::FromNode(iter.GetCurrentNode());
++        if (!content) {
++          continue;
++        }
++
++        Text* text = Text::FromNode(content);
++
++        if (!text && !IsNativeTextInputImage(*content)) {
++          if (!content->IsHTMLElement(nsGkAtoms::br)) {
++            continue;
++          }
++
++          if (!ShouldBreakLineBefore(*content, mRootElement)) {
++            continue;
++          }
++        }
++
++        const uint32_t start = text == range.mRange.GetStartContainer()
++                                   ? range.mRange.StartOffset()
++                                   : 0;
++        const uint32_t end = text == range.mRange.GetEndContainer()
++                                 ? range.mRange.EndOffset()
++                                 : (text ? text->Length() : kBRLength);
++        auto textOffset = GetFlatTextLengthInRange(
++            RawNodePosition(mRootElement, 0u),
++            RawNodePosition::Before(*content), mRootElement);
++        if (textOffset.isErr()) {
++          return textOffset.unwrapErr();
++        }
++
++        if (!text) {
++          if (textOffset.inspect() < aRequest.mOffset) {
++            continue;
++          }
++
++          if (textOffset.inspect() >= aRequest.mOffset + aRequest.mLength) {
++            continue;
++          }
++        }
++
++        for (nsIFrame* frame = content->GetPrimaryFrame(); frame;
++             frame = frame->GetNextContinuation()) {
++          uint32_t from = start;
++          uint32_t to = end;
++          const bool vertical = frame->GetWritingMode().IsVertical();
++          nsRect rect = frame->GetRectRelativeToSelf();
++          if (text) {
++            if (!frame->IsTextFrame()) {
++              continue;
++            }
++
++            const auto [frameStart, frameEnd] = frame->GetOffsets();
++            from = std::max(start, uint32_t(frameStart));
++            to = std::min(end, uint32_t(frameEnd));
++            if (from >= to) {
++              continue;
++            }
++
++            nsPoint first, last;
++            rv = frame->GetPointFromOffset(from, &first);
++            NS_ENSURE_SUCCESS(rv, rv);
++            rv = frame->GetPointFromOffset(to, &last);
++            NS_ENSURE_SUCCESS(rv, rv);
++
++            // Text written right to left -> end is before start
++            if (vertical) {
++              rect.y = std::min(first.y, last.y);
++              rect.height = std::abs(last.y - first.y);
++            } else {
++              rect.x = std::min(first.x, last.x);
++              rect.width = std::abs(last.x - first.x);
++            }
++          } else if (frame->IsBrFrame()) {
++            rect = GetLineBreakerRectBefore(frame).mRect;
++
++            // Keep a selected break visible even on a single line.
++            if (vertical) {
++              rect.height = frame->PresContext()->AppUnitsPerDevPixel();
++            } else {
++              rect.width = frame->PresContext()->AppUnitsPerDevPixel();
++            }
++          } else if (!frame->IsImageFrame()) {
++            continue;
++          }
++
++          NativeTextInputRect selectionRect;
++          selectionRect.mStartOffset = textOffset.inspect() + from;
++          selectionRect.mEndOffset = textOffset.inspect() + to;
++          selectionRect.mContainsStart =
++              selectionRect.mStartOffset == aRequest.mOffset;
++          selectionRect.mContainsEnd =
++              selectionRect.mEndOffset == aRequest.mOffset + aRequest.mLength;
++          selectionRect.mRTL = frame->GetEmbeddingLevel().Direction() ==
++                               intl::BidiDirection::RTL;
++          selectionRect.mVertical = vertical;
++
++          nsIFrame* rectFrame = frame;
++          nsIFrame* block = nullptr;
++          int32_t line = -1;
++          bool interior = false;
++          if (normalizeLines) {
++            auto frameLine = lineForFrame(frame);
++            block = frameLine.first;
++            line = frameLine.second;
++
++            // Keep the original rects if text has moved away from its line.
++            // Rotating the block or its parents doesn't change line layout.
++            bool insideBlock = true;
++            for (nsIFrame* ancestor = frame; block && ancestor;
++                 ancestor = ancestor->GetParent()) {
++              if (ancestor == block) {
++                insideBlock = false;
++              }
++
++              if (insideBlock) {
++                if (ancestor->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
++                  block = nullptr;
++                  break;
++                }
++
++                if (ancestor->IsTransformed()) {
++                  block = nullptr;
++                  break;
++                }
++
++                if (!ancestor->IsRelativelyPositioned()) {
++                  continue;
++                }
++
++                if (ancestor->GetPosition() != ancestor->GetNormalPosition()) {
++                  block = nullptr;
++                  break;
++                }
++                continue;
++              }
++
++              if (!ancestor->IsTransformed()) {
++                continue;
++              }
++
++              const auto transform = nsLayoutUtils::GetTransformToAncestor(
++                  RelativeTo{ancestor}, RelativeTo{ancestor->GetParent()});
++              gfx::Matrix matrix;
++              if (!transform.Is2D(&matrix)) {
++                block = nullptr;
++                break;
++              }
++
++              if (matrix.Determinant() <= 0) {
++                block = nullptr;
++                break;
++              }
++            }
++
++            if (block && block->GetWritingMode().IsVertical() != vertical) {
++              block = nullptr;
++            }
++          }
++
++          if (block && line >= 0) {
++            auto lineInfo = block->GetLineIterator()->GetLine(line);
++            if (lineInfo.isErr()) {
++              return lineInfo.unwrapErr();
++            }
++
++            // Use the block's coordinates so we can compare the text and line
++            // rects.
++            rect.MoveBy(frame->GetOffsetTo(block));
++            rectFrame = block;
++            const WritingMode writingMode = block->GetWritingMode();
++            const nsSize size = block->GetSize();
++            const LogicalRect bounds(writingMode,
++                                     lineInfo.inspect().mLineBounds, size);
++            const LogicalRect content(
++                writingMode, block->GetContentRectRelativeToSelf(), size);
++            LogicalRect highlight(writingMode, rect, size);
++            const bool firstLine = std::pair(block, line) == startLine;
++            const bool lastLine = std::pair(block, line) == endLine;
++            interior = !firstLine && !lastLine;
++
++            // Fill the gaps between selected lines without growing the
++            // selection's outer edges.
++            // Starting from below, they're all borrowed from WebKit (again!)
++            nscoord blockStart = highlight.BStart(writingMode);
++            nscoord blockEnd = highlight.BEnd(writingMode);
++
++            if (!firstLine) {
++              blockStart = std::min(blockStart, bounds.BStart(writingMode));
++            }
++            if (!lastLine) {
++              blockEnd = std::max(blockEnd, bounds.BEnd(writingMode));
++            }
++
++            highlight.BStart(writingMode) = blockStart;
++            highlight.BSize(writingMode) = blockEnd - blockStart;
++
++            if (interior) {
++              // Fill indentation and trailing space on fully selected lines.
++              highlight.IStart(writingMode) = content.IStart(writingMode);
++              highlight.ISize(writingMode) = content.ISize(writingMode);
++            }
++
++            if (firstLine) {
++              // Find the line end as it appears on screen. Mixed text
++              // directions can put it somewhere other than the last frame in
++              // DOM order.
++              nsIFrame* firstVisual;
++              nsIFrame* lastVisual;
++              bool reordered;
++              rv = block->GetLineIterator()->CheckLineOrder(
++                  line, &reordered, &firstVisual, &lastVisual);
++              NS_ENSURE_SUCCESS(rv, rv);
++              nsIFrame* child = frame;
++
++              while (child->GetParent() && child->GetParent() != block) {
++                child = child->GetParent();
++              }
++
++              const bool reachesLineEnd = child == lastVisual;
++              const bool followsLineDirection =
++                  selectionRect.mRTL == writingMode.IsBidiRTL();
++              if (reachesLineEnd && followsLineDirection) {
++                highlight.ISize(writingMode) =
++                    std::max(highlight.IEnd(writingMode),
++                             content.IEnd(writingMode)) -
++                    highlight.IStart(writingMode);
++              }
++            }
++
++            rect = highlight.GetPhysicalRect(writingMode, size);
++
++            // Use shared coordinates for paragraphs in the same parent.
++            nsIFrame* parent = block->GetParent();
++            if (!block->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
++                !block->IsTransformed() &&
++                !block->IsRelativelyOrStickyPositioned()) {
++              if (parent && parent->IsBlockFrame() &&
++                  parent->GetWritingMode() == writingMode) {
++                rect.MoveBy(block->GetOffsetTo(parent));
++                rectFrame = parent;
++              }
++            }
++          }
++
++          rv = visualRect(rectFrame, rect, selectionRect);
++          NS_ENSURE_SUCCESS(rv, rv);
++
++          if (block && previousBlock && rectFrame == previousRectFrame) {
++            auto& previous = aReply.mRects.LastElement();
++            const bool sameLine =
++                block == previousBlock && line == previousLine;
++            const WritingMode writingMode = block->GetWritingMode();
++            bool nextLine = false;
++            if (!sameLine) {
++              if (!vertical) {
++                nextLine = selectionRect.mUntransformedRect.YMost() >
++                           previous.mUntransformedRect.YMost();
++              } else if (writingMode.IsVerticalRL()) {
++                nextLine = selectionRect.mUntransformedRect.x <
++                           previous.mUntransformedRect.x;
++              } else {
++                nextLine = selectionRect.mUntransformedRect.XMost() >
++                           previous.mUntransformedRect.XMost();
++              }
++            }
++
++            // Join in local coordinates so the shared edge rotates with text.
++            // For upright text, also keep the edge on the same rounded pixel.
++            if (nextLine) {
++              const auto& transform = selectionRect.mTransform;
++              const bool upright = transform._12 == 0 && transform._21 == 0 &&
++                                   transform._11 > 0 && transform._22 > 0;
++              if (!vertical) {
++                float localEdge = previous.mUntransformedRect.YMost();
++                if (upright) {
++                  localEdge =
++                      (previous.mRect.YMost() - transform._32) / transform._22;
++                }
++                previous.mUntransformedRect.SetBottomEdge(localEdge);
++                selectionRect.mUntransformedRect.SetTopEdge(localEdge);
++              } else if (writingMode.IsVerticalRL()) {
++                float localEdge = previous.mUntransformedRect.x;
++                if (upright) {
++                  localEdge = (previous.mRect.x - transform._31) / transform._11;
++                }
++                previous.mUntransformedRect.SetLeftEdge(localEdge);
++                selectionRect.mUntransformedRect.SetRightEdge(localEdge);
++              } else {
++                float localEdge = previous.mUntransformedRect.XMost();
++                if (upright) {
++                  localEdge =
++                      (previous.mRect.XMost() - transform._31) / transform._11;
++                }
++                previous.mUntransformedRect.SetRightEdge(localEdge);
++                selectionRect.mUntransformedRect.SetLeftEdge(localEdge);
++              }
++            } else if (sameLine && std::pair(block, line) != startLine) {
++              if (!vertical) {
++                selectionRect.mUntransformedRect.SetTopEdge(
++                    std::max(selectionRect.mUntransformedRect.y,
++                             previous.mUntransformedRect.y));
++              } else if (writingMode.IsVerticalRL()) {
++                selectionRect.mUntransformedRect.SetRightEdge(
++                    std::min(selectionRect.mUntransformedRect.XMost(),
++                             previous.mUntransformedRect.XMost()));
++              } else {
++                selectionRect.mUntransformedRect.SetLeftEdge(
++                    std::max(selectionRect.mUntransformedRect.x,
++                             previous.mUntransformedRect.x));
++              }
++            }
++
++            // Keep partial first and last lines separate from the full lines.
++            bool mergeRects = false;
++            if (interior && previousInterior && (sameLine || nextLine)) {
++              mergeRects = true;
++            } else if (sameLine && previous.mRTL == selectionRect.mRTL) {
++              mergeRects = previous.mUntransformedRect.Intersects(
++                  selectionRect.mUntransformedRect);
++            }
++
++            auto updateBounds = [](NativeTextInputRect& aRect) {
++              aRect.mRect = RoundedOut(LayoutDeviceRect::FromUnknownRect(
++                  aRect.mTransform.TransformBounds(
++                      aRect.mUntransformedRect.ToUnknownRect())));
++            };
++            if (mergeRects) {
++              previous.mUntransformedRect = previous.mUntransformedRect.Union(
++                  selectionRect.mUntransformedRect);
++              updateBounds(previous);
++              previous.mStartOffset =
++                  std::min(previous.mStartOffset, selectionRect.mStartOffset);
++              previous.mEndOffset =
++                  std::max(previous.mEndOffset, selectionRect.mEndOffset);
++              previous.mContainsStart |= selectionRect.mContainsStart;
++              previous.mContainsEnd |= selectionRect.mContainsEnd;
++              previousBlock = block;
++              previousLine = line;
++              continue;
++            }
++            updateBounds(previous);
++            updateBounds(selectionRect);
++          }
++
++          previousBlock = block;
++          previousRectFrame = rectFrame;
++          previousLine = line;
++          previousInterior = interior;
++          aReply.mRects.AppendElement(selectionRect);
++        }
++      }
++
++      // Line breaks and empty paragraphs may have no text rect.
++      // Use the caret rect so the selection handle still has a position.
++      bool containsStart = false;
++      bool containsEnd = false;
++      for (const auto& rect : aReply.mRects) {
++        containsStart |= rect.mContainsStart;
++        containsEnd |= rect.mContainsEnd;
++      }
++
++      if (!containsStart) {
++        NativeTextInputRect caret;
++        rv = caretAtOffset(aRequest.mOffset, true, caret);
++        NS_ENSURE_SUCCESS(rv, rv);
++        caret.mContainsStart = true;
++        caret.mStartOffset = caret.mEndOffset = aRequest.mOffset;
++        aReply.mRects.AppendElement(caret);
++      }
++
++      if (!containsEnd) {
++        NativeTextInputRect caret;
++        rv = caretAtOffset(aRequest.mOffset + aRequest.mLength, false, caret);
++        NS_ENSURE_SUCCESS(rv, rv);
++        caret.mContainsEnd = true;
++        caret.mStartOffset = caret.mEndOffset =
++            aRequest.mOffset + aRequest.mLength;
++        aReply.mRects.AppendElement(caret);
++      }
++      break;
++    }
++    case NativeTextInputQuery::HitTest: {
++      PresShell* shell = mDocument->GetPresShell();
++      NS_ENSURE_TRUE(shell, NS_ERROR_NOT_AVAILABLE);
++      nsIFrame* rootFrame = shell->GetRootFrame();
++      NS_ENSURE_TRUE(rootFrame, NS_ERROR_NOT_AVAILABLE);
++      nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
++          widget, aRequest.mPoint, RelativeTo{rootFrame});
++      nsIFrame* target =
++          nsLayoutUtils::GetFrameForPoint(RelativeTo{rootFrame}, point);
++      nsTextControlFrame* textControl =
++          GetFocusedTextControlFrameForRoot(mRootElement);
++      const bool hitTextControl =
++          target && textControl &&
++          target->GetContent() == textControl->ControlElement();
++
++      if (target && target->GetContent() && target->IsSelectable()) {
++        aReply.mHitSelectableContent =
++            hitTextControl ||
++            target->GetContent()->IsInclusiveDescendantOf(mRootElement);
++      }
++
++      if (aReply.mHitSelectableContent) {
++        if (hitTextControl) {
++          target = mRootElement->GetPrimaryFrame();
++          NS_ENSURE_TRUE(target, NS_ERROR_NOT_AVAILABLE);
++        }
++        NS_ENSURE_TRUE(nsLayoutUtils::TransformPoint(
++                           RelativeTo{rootFrame}, RelativeTo{target}, point) ==
++                           nsLayoutUtils::TRANSFORM_SUCCEEDED,
++                       NS_ERROR_NOT_AVAILABLE);
++      } else {
++        target = mRootElement->GetPrimaryFrame();
++        NS_ENSURE_TRUE(target, NS_ERROR_NOT_AVAILABLE);
++        point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
++            widget, aRequest.mPoint, RelativeTo{target});
++      }
++
++      auto offsets = target->GetContentOffsetsFromPoint(point);
++      NS_ENSURE_TRUE(offsets.content &&
++                         offsets.content->IsInclusiveDescendantOf(mRootElement),
++                     NS_ERROR_NOT_AVAILABLE);
++      auto offset =
++          GetFlatTextLengthInRange(RawNodePosition(mRootElement, 0u),
++                                   RawNodePosition(offsets), mRootElement);
++      if (offset.isErr()) {
++        return offset.unwrapErr();
++      }
++
++      aReply.mOffset = offset.unwrap();
++      aReply.mAssociateWithNext =
++          offsets.associate == CaretAssociationHint::After;
++
++      if (aReply.mHitSelectableContent && target->IsTextFrame()) {
++        auto character =
++            static_cast<nsTextFrame*>(target)->GetCharacterOffsetAtFramePoint(
++                point);
++        if (character.content &&
++            character.content->IsInclusiveDescendantOf(mRootElement)) {
++          auto characterOffset = GetFlatTextLengthInRange(
++              RawNodePosition(mRootElement, 0u), RawNodePosition(character),
++              mRootElement);
++          if (characterOffset.isOk()) {
++            aReply.mCharacterOffset = characterOffset.unwrap();
++          }
++        }
++      }
++      break;
++    }
++    case NativeTextInputQuery::WritingDirection:
++    case NativeTextInputQuery::Move:
++    case NativeTextInputQuery::ParagraphBoundary:
++    case NativeTextInputQuery::LineBoundary: {
++      FrameAndOffset frame;
++      rv = frameAtOffset(aRequest.mOffset, aRequest.mAssociateWithNext, frame);
++      NS_ENSURE_SUCCESS(rv, rv);
++      aReply.mRTL = nsBidiPresUtils::ParagraphDirection(frame) ==
++                    intl::BidiDirection::RTL;
++      const bool vertical = frame->GetWritingMode().IsVertical();
++      const bool backwardDirection =
++          aRequest.mDirection == NativeTextInputDirection::Backward ||
++          aRequest.mDirection == NativeTextInputDirection::Left ||
++          aRequest.mDirection == NativeTextInputDirection::Up;
++      bool backward = backwardDirection;
++      const bool verticalMovement =
++          aRequest.mDirection == NativeTextInputDirection::Up ||
++          aRequest.mDirection == NativeTextInputDirection::Down;
++      const bool physicalDirection =
++          aRequest.mDirection != NativeTextInputDirection::Forward &&
++          aRequest.mDirection != NativeTextInputDirection::Backward;
++      const bool inlineMovement =
++          !physicalDirection || (verticalMovement == vertical);
++
++      if (physicalDirection && inlineMovement && aReply.mRTL) {
++        backward = !backward;
++      }
++      if (physicalDirection && !inlineMovement && vertical &&
++          frame->GetWritingMode().IsVerticalRL()) {
++        backward = !backward;
++      }
++
++      aReply.mBackward = backward;
++      if (aRequest.mQuery == NativeTextInputQuery::WritingDirection) {
++        break;
++      }
++
++      nsSelectionAmount amount = inlineMovement ? eSelectCluster : eSelectLine;
++      if (aRequest.mQuery == NativeTextInputQuery::LineBoundary) {
++        amount = backward ? eSelectBeginLine : eSelectEndLine;
++      } else if (aRequest.mQuery == NativeTextInputQuery::ParagraphBoundary) {
++        amount = eSelectParagraph;
++      }
++
++      PeekOffsetOptions options{PeekOffsetOption::JumpLines,
++                                PeekOffsetOption::StopAtScroller,
++                                PeekOffsetOption::ForCaretMove};
++      if (aRequest.mQuery == NativeTextInputQuery::ParagraphBoundary) {
++        // ForCaretMove moves into the text at a paragraph boundary.
++        // We need the paragraph boundary itself when selecting a paragraph.
++        options -= PeekOffsetOption::ForCaretMove;
++      }
++      if (physicalDirection) {
++        options += PeekOffsetOption::Visual;
++      }
++      if (aReply.mEditable) {
++        options += PeekOffsetOption::ForceEditableRegion;
++      }
++
++      nsPoint desired;
++      if (amount == eSelectLine) {
++        // Keep the same column when moving through several lines.
++        rv = frame->GetPointFromOffset(frame.mOffsetInFrameContent, &desired);
++        NS_ENSURE_SUCCESS(rv, rv);
++        desired += frame->GetOffsetToRootFrame();
++      }
++
++      uint32_t offset = aRequest.mOffset;
++      for (uint32_t i = 0; i < aRequest.mCount; ++i) {
++        // The next paragraph may have a different text direction.
++        bool previous = backwardDirection;
++        if (physicalDirection && inlineMovement &&
++            nsBidiPresUtils::ParagraphDirection(frame) ==
++                intl::BidiDirection::RTL) {
++          previous = !previous;
++        }
++        if (physicalDirection && !inlineMovement && vertical &&
++            frame->GetWritingMode().IsVerticalRL()) {
++          previous = !previous;
++        }
++        PeekOffsetStruct peek(amount, previous ? eDirPrevious : eDirNext,
++                              frame.mOffsetInFrameContent, desired, options,
++                              eDefaultBehavior, mRootElement);
++        rv = frame->PeekOffset(&peek);
++        if (NS_FAILED(rv) || !peek.mResultContent ||
++            !peek.mResultContent->IsInclusiveDescendantOf(mRootElement)) {
++          return NS_ERROR_NOT_AVAILABLE;
++        }
++
++        auto resultOffset = GetFlatTextLengthInRange(
++            RawNodePosition(mRootElement, 0u),
++            RawNodePosition(peek.mResultContent, peek.mContentOffset),
++            mRootElement);
++        if (resultOffset.isErr()) {
++          return resultOffset.unwrapErr();
++        }
++
++        offset = resultOffset.unwrap();
++        if (amount == eSelectCluster && peek.mResultFrame) {
++          // Moving by a character doesn't set mAttach. At a line end, keep the
++          // caret on that line instead of jumping to the next one.
++          const auto [start, end] = peek.mResultFrame->GetOffsets();
++          peek.mAttach = end == peek.mContentOffset && (start || end)
++                             ? CaretAssociationHint::Before
++                             : CaretAssociationHint::After;
++        }
++
++        aReply.mAssociateWithNext = peek.mAttach == CaretAssociationHint::After;
++        if (i + 1 < aRequest.mCount) {
++          frame = SelectionMovementUtils::GetFrameForNodeOffset(
++              peek.mResultContent, peek.mContentOffset, peek.mAttach);
++          NS_ENSURE_TRUE(frame, NS_ERROR_NOT_AVAILABLE);
++        }
++      }
++
++      aReply.mOffset = offset;
++      break;
++    }
++    case NativeTextInputQuery::SetWritingDirection: {
++      RefPtr<EditorBase> editor =
++          nsContentUtils::GetActiveEditor(mDocument->GetPresContext());
++      NS_ENSURE_TRUE(editor && aReply.mEditable, NS_ERROR_NOT_AVAILABLE);
++      const EditorBase::TextDirection direction =
++          aRequest.mDirection == NativeTextInputDirection::Backward
++              ? EditorBase::TextDirection::eRTL
++              : EditorBase::TextDirection::eLTR;
++      editor->SwitchTextDirectionTo(direction);
++      break;
++    }
++    case NativeTextInputQuery::ToggleBold:
++    case NativeTextInputQuery::ToggleItalic:
++    case NativeTextInputQuery::ToggleUnderline: {
++      RefPtr<EditorBase> editor =
++          nsContentUtils::GetActiveEditor(mDocument->GetPresContext());
++      NS_ENSURE_TRUE(editor && aReply.mEditable, NS_ERROR_NOT_AVAILABLE);
++
++      Command format = Command::FormatBold;
++      if (aRequest.mQuery == NativeTextInputQuery::ToggleItalic) {
++        format = Command::FormatItalic;
++      } else if (aRequest.mQuery == NativeTextInputQuery::ToggleUnderline) {
++        format = Command::FormatUnderline;
++      }
++
++      RefPtr<EditorCommand> command = StyleUpdatingCommand::GetInstance();
++      NS_ENSURE_TRUE(command->IsCommandEnabled(format, editor),
++                     NS_ERROR_NOT_AVAILABLE);
++      rv = command->DoCommand(format, *editor, nullptr);
++      NS_ENSURE_SUCCESS(rv, rv);
++      break;
++    }
++    case NativeTextInputQuery::SetSelection: {
++      NS_ENSURE_TRUE(aReply.mSelectable, NS_ERROR_NOT_AVAILABLE);
++      WidgetSelectionEvent selection(true, eSetSelection, widget);
++      selection.mOffset = aRequest.mOffset;
++      selection.mLength = aRequest.mLength;
++      selection.mExpandToClusterBoundary = false;
++      selection.mAssociateWithNext = Some(aRequest.mAssociateWithNext);
++
++      SelectionBatcher selectionBatch(*mSelection, __FUNCTION__);
++      rv = OnSelectionEvent(&selection, ScrollFlags::ScrollFirstAncestorOnly |
++                                            ScrollFlags::ScrollOverflowHidden);
++      NS_ENSURE_SUCCESS(rv, rv);
++      NS_ENSURE_TRUE(selection.mSucceeded, NS_ERROR_NOT_AVAILABLE);
++      break;
++    }
++    case NativeTextInputQuery::PrepareDeletion: {
++      NS_ENSURE_TRUE(aReply.mEditable, NS_ERROR_NOT_AVAILABLE);
++      // Apparently there's a line break at the start of an empty block
++      // of text? So to make deletion don't show an empty selection, just
++      // don't select the break
++      if (!aRequest.mOffset && aRequest.mLength == kBRLength) {
++        auto rangeOrError = ConvertFlatTextOffsetToDOMRange(
++            aRequest.mOffset, aRequest.mLength, false);
++        if (rangeOrError.isErr()) {
++          return rangeOrError.unwrapErr();
++        }
++
++        const auto& range = rangeOrError.inspect().mRange;
++        const nsINode* endContainer = range.GetEndContainer();
++
++        if (!range.EndOffset() && endContainer->IsElement() &&
++            ShouldBreakLineBefore(*endContainer->AsContent(), mRootElement)) {
++          break;
++        }
++      }
++
++      WidgetSelectionEvent selection(true, eSetSelection, widget);
++      selection.mOffset = aRequest.mOffset;
++      selection.mLength = aRequest.mLength;
++      selection.mExpandToClusterBoundary = false;
++      selection.mAssociateWithNext = Some(aRequest.mAssociateWithNext);
++
++      // UIKit selects text before deleting it when holding backspace.
++      // Hide this temporary selection so handles and page menus don't flash.
++      AutoHideSelectionChanges hideSelectionChanges(*mSelection);
++      rv = OnSelectionEvent(&selection);
++      NS_ENSURE_SUCCESS(rv, rv);
++      NS_ENSURE_TRUE(selection.mSucceeded, NS_ERROR_NOT_AVAILABLE);
++      break;
++    }
++    case NativeTextInputQuery::ReplaceText: {
++      RefPtr<EditorBase> editor =
++          nsContentUtils::GetActiveEditor(mDocument->GetPresContext());
++      NS_ENSURE_TRUE(editor && aReply.mEditable, NS_ERROR_NOT_AVAILABLE);
++      auto rangeOrError = ConvertFlatTextOffsetToDOMRange(
++          aRequest.mOffset, aRequest.mLength, false);
++      if (rangeOrError.isErr()) {
++        return rangeOrError.unwrapErr();
++      }
++
++      auto range = rangeOrError.unwrap();
++      RefPtr<nsRange> replacement = nsRange::Create(
++          range.mRange.Start(), range.mRange.End(), IgnoreErrors());
++      NS_ENSURE_TRUE(replacement, NS_ERROR_NOT_AVAILABLE);
++
++      // Move the caret after text replaced around it. Keep it in place when
++      // correcting a word elsewhere.
++      bool caretInReplacement = false;
++      if (const nsINode* focus = mSelection->GetFocusNode();
++          focus && mSelection->IsCollapsed()) {
++        caretInReplacement = replacement->IsPointInRange(
++            *focus, mSelection->FocusOffset(), IgnoreErrors());
++      }
++
++      const bool replacingSelection =
++          mSelection->RangeCount() == 1 &&
++          replacement->HasEqualBoundaries(*mSelection->GetRangeAt(0));
++
++      // Send selection notifications after the replacement is done.
++      SelectionBatcher selectionBatch(*mSelection, __FUNCTION__);
++      rv = editor->ReplaceTextAsAction(
++          aRequest.mText, replacement,
++          EditorBase::AllowBeforeInputEventCancelable::Yes,
++          caretInReplacement || replacingSelection
++              ? EditorBase::PreventSetSelection::No
++              : EditorBase::PreventSetSelection::Yes);
++      NS_ENSURE_SUCCESS(rv, rv);
++      break;
++    }
++    case NativeTextInputQuery::InsertDictation: {
++      RefPtr<EditorBase> editor =
++          nsContentUtils::GetActiveEditor(mDocument->GetPresContext());
++      NS_ENSURE_TRUE(editor && aReply.mEditable, NS_ERROR_NOT_AVAILABLE);
++
++      WidgetSelectionEvent selection(true, eSetSelection, widget);
++      selection.mOffset = aRequest.mOffset;
++      selection.mLength = aRequest.mLength;
++      selection.mExpandToClusterBoundary = false;
++      {
++        // Hide the temporary selection, but let the insertion below notify
++        // listeners normally.
++        AutoHideSelectionChanges hideSelectionChanges(*mSelection);
++        rv = OnSelectionEvent(&selection);
++        NS_ENSURE_SUCCESS(rv, rv);
++        NS_ENSURE_TRUE(selection.mSucceeded, NS_ERROR_NOT_AVAILABLE);
++      }
++
++      rv = editor->InsertTextAsAction(aRequest.mText);
++      NS_ENSURE_SUCCESS(rv, rv);
++      break;
++    }
++    case NativeTextInputQuery::StartTextDrag: {
++      NS_ENSURE_TRUE(aReply.mEditable && !mSelection->IsCollapsed(),
++                     NS_ERROR_NOT_AVAILABLE);
++
++      RefPtr<PresShell> shell = mDocument->GetPresShell();
++      nsIFrame* rootFrame = shell ? shell->GetRootFrame() : nullptr;
++      NS_ENSURE_TRUE(rootFrame, NS_ERROR_NOT_AVAILABLE);
++
++      WidgetMouseEvent event(true, eMouseTouchDrag, widget,
++                             WidgetMouseEvent::eReal);
++      event.mRefPoint = aRequest.mPoint;
++      event.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
++      event.mButton = MouseButton::ePrimary;
++      event.mButtons = MouseButtonsFlag::ePrimaryFlag;
++
++      nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
++          &event, RelativeTo{rootFrame});
++      nsIFrame* target =
++          nsLayoutUtils::GetFrameForPoint(RelativeTo{rootFrame}, point);
++      NS_ENSURE_TRUE(target, NS_ERROR_NOT_AVAILABLE);
++
++      RefPtr<EventStateManager> esm =
++          shell->GetPresContext()->EventStateManager();
++      // Let Gecko prepare the drag data and send dragstart.
++      // The page can cancel this, leaving us without a drag session.
++      esm->StartNativeDragGesture(event, target);
++      nsCOMPtr<nsIDragSession> session =
++          nsContentUtils::GetDragSession(shell->GetPresContext());
++      NS_ENSURE_TRUE(session, NS_ERROR_NOT_AVAILABLE);
++      break;
++    }
++    case NativeTextInputQuery::ScrollSelectionIntoView: {
++      NS_ENSURE_TRUE(aReply.mSelectable, NS_ERROR_NOT_AVAILABLE);
++      ScrollFlags flags = ScrollFlags::ScrollOverflowHidden;
++      if (aRequest.mAnimated) {
++        flags |= ScrollFlags::ScrollSmooth;
++      }
++
++      rv = MOZ_KnownLive(mSelection)
++               ->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
++                                AxisScrollParams(), AxisScrollParams(), flags,
++                                SelectionScrollMode::SyncNoFlush);
++      NS_ENSURE_SUCCESS(rv, rv);
++      break;
++    }
++    case NativeTextInputQuery::ScrollAtPoint: {
++      NS_ENSURE_TRUE(aReply.mSelectable, NS_ERROR_NOT_AVAILABLE);
++      RefPtr<PresShell> shell = mDocument->GetPresShell();
++      NS_ENSURE_TRUE(shell, NS_ERROR_NOT_AVAILABLE);
++      nsRect caret;
++      nsIFrame* frame = mSelection->GetSelectionAnchorGeometry(
++          nsISelectionController::SELECTION_FOCUS_REGION, &caret);
++      NS_ENSURE_TRUE(frame, NS_ERROR_NOT_AVAILABLE);
++
++      // Scroll toward the dragged handle, even if the selection end is still
++      // visible.
++      nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
++          widget, aRequest.mPoint, RelativeTo{frame});
++      aReply.mScrolled =
++          shell->ScrollFrameIntoView(frame, Some(nsRect(point, nsSize())),
++                                     AxisScrollParams(), AxisScrollParams(),
++                                     ScrollFlags::ScrollOverflowHidden |
++                                         ScrollFlags::ScrollFirstAncestorOnly);
++      break;
++    }
++    case NativeTextInputQuery::BlurFocusedInput: {
++      RefPtr<nsFocusManager> focusManager = nsFocusManager::GetFocusManager();
++      nsCOMPtr<nsPIDOMWindowOuter> window = mDocument->GetWindow();
++      NS_ENSURE_TRUE(focusManager && window, NS_ERROR_NOT_AVAILABLE);
++      focusManager->ClearFocus(window);
++      break;
++    }
++    case NativeTextInputQuery::ClearSelection: {
++      ErrorResult error;
++      MOZ_KnownLive(mSelection)->RemoveAllRanges(error);
++      if (error.Failed()) {
++        return error.StealNSResult();
++      }
++
++      break;
++    }
++  }
++
++  if (aRequest.mQuery == NativeTextInputQuery::State ||
++      aRequest.mQuery == NativeTextInputQuery::Appearance) {
++    uint32_t start = aRequest.mOffset;
++    uint32_t length = aRequest.mLength;
++    if (aRequest.mQuery == NativeTextInputQuery::State) {
++      start = aReply.mSelectionStart;
++      length = aReply.mSelectionLength;
++    }
++
++    if (start != UINT32_MAX && !aReply.mSuppressSelectionDisplay) {
++      for (uint32_t offset : {start, start + length}) {
++        for (bool after : {false, true}) {
++          NativeTextInputRect caret;
++          if (NS_SUCCEEDED(caretAtOffset(offset, after, caret))) {
++            caret.mStartOffset = offset;
++            caret.mAssociateWithNext = after;
++            aReply.mCaretRects.AppendElement(std::move(caret));
++          }
++        }
++        if (!length) {
++          break;
++        }
++      }
++
++      if (length) {
++        NativeTextInputRequest request;
++        request.mQuery = NativeTextInputQuery::SelectionHighlightRects;
++        request.mOffset = start;
++        request.mLength = length;
++        NativeTextInputReply geometry;
++        rv = QueryNativeTextInput(request, geometry);
++        NS_ENSURE_SUCCESS(rv, rv);
++        aReply.mRects = std::move(geometry.mRects);
++      }
++    }
++  }
++
++  for (const auto& caret : aReply.mCaretRects) {
++    for (const auto& reference : caret.mScrollReferences) {
++      if (!aReply.mSelectionScrollers.Contains(reference.mGuid)) {
++        aReply.mSelectionScrollers.AppendElement(reference.mGuid);
++      }
++    }
++  }
++
++  aReply.mSucceeded = true;
++  return NS_OK;
++}
++
  nsresult ContentEventHandler::InitCommon(EventMessage aEventMessage,
                                           SelectionType aSelectionType,
                                           bool aRequireFlush) {
-@@ -570,7 +578,8 @@ nsresult ContentEventHandler::Init(WidgetQueryContentEvent* aEvent) {
- 
-   aEvent->mReply->mContentsRoot = mRootElement.get();
-   aEvent->mReply->mIsEditableContent =
--      mRootElement && mRootElement->IsEditable();
-+      mRootElement && (mRootElement->IsEditable() ||
-+                       GetFocusedTextControlFrameForRoot(mRootElement));
- 
-   nsRect r;
-   nsIFrame* frame = nsCaret::GetGeometry(mSelection, &r);
-@@ -628,6 +637,15 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -628,6 +1910,13 @@ nsresult ContentEventHandler::QueryContentRect(
  
    aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
        resultRect, presContext->AppUnitsPerDevPixel());
-+  // Keep editor/content rect queries in the same visual coordinate
-+  // space as caret and text rect queries so native iOS selection UI tracks
-+  // async zoom and panning correctly.
++  // Use the same coordinates as caret and text rects when zoomed or panned.
 +  if (nsPresContext* rootContext =
 +          presContext->GetInProcessRootContentDocumentPresContext()) {
 +    aEvent->mReply->mRect =
@@ -64,12 +1349,12 @@ index d11a218cd050..022fd510ad62 100644
    // Returning empty rect may cause native IME confused, let's make sure to
    // return non-empty rect.
    EnsureNonEmptyRect(aEvent->mReply->mRect);
-@@ -635,6 +653,53 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -635,6 +1924,32 @@ nsresult ContentEventHandler::QueryContentRect(
    return NS_OK;
  }
  
-+// Detect the focused text control's anonymous editor root so iOS
-+// query-content requests can use textarea scrollport-relative geometry.
++// Find the input or textarea that owns this editor so we can use its
++// value, bounds, and disabled or readonly state.
 +static nsTextControlFrame* GetFocusedTextControlFrameForRoot(
 +    Element* aRootElement) {
 +  if (!aRootElement) {
@@ -94,157 +1379,172 @@ index d11a218cd050..022fd510ad62 100644
 +  return textControlFrame;
 +}
 +
-+// Collect text control range geometry without edge-clamping so iOS
-+// selection UI can disappear when the selection scrolls fully out of view.
-+static bool GetUnclampedTextControlRangeRect(nsRange* aRange, nsRect& aRect) {
-+  if (!aRange) {
-+    return false;
-+  }
-+
-+  nsLayoutUtils::RectAccumulator accumulator;
-+  nsRange::CollectClientRectsAndText(
-+      &accumulator, nullptr, aRange, aRange->GetStartContainer(),
-+      aRange->StartOffset(), aRange->GetEndContainer(), aRange->EndOffset(),
-+      false, false);
-+  if (!accumulator.mSeenFirstRect) {
-+    return false;
-+  }
-+
-+  aRect = accumulator.mResultRect.IsEmpty() ? accumulator.mFirstRect
-+                                            : accumulator.mResultRect;
-+  return true;
-+}
-+
  // Editor places a padding <br> element under its root content if the editor
  // doesn't have any text. This happens even for single line editors.
  // When we get text content and when we change the selection,
-@@ -2525,6 +2590,48 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
+@@ -837,6 +2152,8 @@ nsresult ContentEventHandler::GenerateFlatTextContent(
+       }
+     } else if (ShouldBreakLineBefore(*node->AsContent(), mRootElement)) {
+       aString.Append(char16_t('\n'));
++    } else if (IsNativeTextInputImage(*node->AsContent())) {
++      aString.Append(char16_t(0xFFFC));
+     }
+   }
+   return NS_OK;
+@@ -1025,6 +2342,11 @@ nsresult ContentEventHandler::GenerateFlatFontRanges(
+         }
+       }
+       baseOffset += kBRLength;
++    } else if (IsNativeTextInputImage(*content)) {
++      if (aFontRanges.IsEmpty()) {
++        AppendFontRange(aFontRanges, baseOffset);
++      }
++      ++baseOffset;
+     }
+   }
+ 
+@@ -1144,10 +2466,13 @@ ContentEventHandler::ConvertFlatTextOffsetToDOMRangeBase(
+       result.mLastTextNode = contentAsText;
+     }
+ 
+-    uint32_t textLength =
+-        contentAsText
+-            ? GetTextLength(*contentAsText)
+-            : (ShouldBreakLineBefore(*content, mRootElement) ? kBRLength : 0);
++    uint32_t textLength = 0;
++    if (contentAsText) {
++      textLength = GetTextLength(*contentAsText);
++    } else if (ShouldBreakLineBefore(*content, mRootElement) ||
++               IsNativeTextInputImage(*content)) {
++      textLength = kBRLength;
++    }
+     if (!textLength) {
+       continue;
+     }
+@@ -2525,6 +3850,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
    }
    DOMRangeAndAdjustedOffsetInFlattenedText domRangeAndAdjustedOffset =
        domRangeAndAdjustedOffsetOrError.unwrap();
 +
-+  // Text controls need unclamped range geometry instead of the normal
-+  // edge-clamped query path used for generic editable content.
-+  if (GetFocusedTextControlFrameForRoot(mRootElement)) {
-+    nsRect unclampedRect;
-+    IgnoredErrorResult ignoredError;
-+    RefPtr<nsRange> textControlRange =
-+        nsRange::Create(domRangeAndAdjustedOffset.mRange.Start(),
-+                        domRangeAndAdjustedOffset.mRange.End(), ignoredError);
-+    if (!ignoredError.Failed() && textControlRange &&
-+        GetUnclampedTextControlRangeRect(textControlRange, unclampedRect)) {
-+      nsPresContext* presContext = mRootElement->OwnerDoc()->GetPresContext();
-+      if (NS_WARN_IF(!presContext)) {
-+        return NS_ERROR_FAILURE;
-+      }
-+      aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
-+          unclampedRect, presContext->AppUnitsPerDevPixel());
-+      if (nsPresContext* rootContext =
-+              presContext->GetInProcessRootContentDocumentPresContext()) {
-+        aEvent->mReply->mRect =
-+            RoundedOut(ViewportUtils::DocumentRelativeLayoutToVisual(
-+                aEvent->mReply->mRect, rootContext->PresShell()));
-+      }
-+      EnsureNonEmptyRect(aEvent->mReply->mRect);
-+      if (nsIFrame* rootFrame = mRootElement->GetPrimaryFrame()) {
-+        aEvent->mReply->mWritingMode = rootFrame->GetWritingMode();
-+      }
-+
-+      nsString string;
-+      if (NS_WARN_IF(NS_FAILED(GenerateFlatTextContent(
-+              domRangeAndAdjustedOffset.mRange, string)))) {
-+        return NS_ERROR_FAILURE;
-+      }
-+      aEvent->mReply->mOffsetAndData.emplace(
-+          domRangeAndAdjustedOffset.mAdjustedOffset, string,
-+          OffsetAndDataFor::EditorString);
-+
-+      MOZ_ASSERT(aEvent->Succeeded());
-+      return NS_OK;
-+    }
-+  }
-+
    nsString string;
    if (NS_WARN_IF(NS_FAILED(
            GenerateFlatTextContent(domRangeAndAdjustedOffset.mRange, string)))) {
-@@ -2862,6 +2969,76 @@ nsresult ContentEventHandler::OnQueryEditorRect(
+@@ -2847,7 +4173,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
+ }
+ 
+ nsresult ContentEventHandler::OnQueryEditorRect(
+-    WidgetQueryContentEvent* aEvent) {
++    WidgetQueryContentEvent* aEvent, NativeTextInputReply* aNativeGeometry) {
+   nsresult rv = Init(aEvent);
+   if (NS_FAILED(rv)) {
+     return rv;
+@@ -2862,9 +4188,72 @@ nsresult ContentEventHandler::OnQueryEditorRect(
      }
    }
  
-+  if (nsTextControlFrame* textControlFrame =
+-  if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
+-    return NS_ERROR_FAILURE;
++  nsIContent* editorContent = mRootElement;
++#ifdef XP_IOS
++  nsIFrame* editorFrame = mRootElement->GetPrimaryFrame();
++  // Start with the control's bounds rather than its scrolled anonymous text.
++  if (nsTextControlFrame* control =
 +          GetFocusedTextControlFrameForRoot(mRootElement)) {
-+    // Focused text controls need the live scrollport here so native
-+    // UIKit selection UI can disappear once a textarea scrolls the selection
-+    // fully out of view.
-+    if (ScrollContainerFrame* scrollTargetFrame =
-+            textControlFrame->GetScrollTargetFrame()) {
-+      nsRect resultRect = scrollTargetFrame->GetScrollPortRect();
-+      rv = ConvertToRootRelativeOffset(scrollTargetFrame, resultRect);
-+      if (NS_SUCCEEDED(rv)) {
-+        nsPresContext* presContext = scrollTargetFrame->PresContext();
-+        aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
-+            resultRect, presContext->AppUnitsPerDevPixel());
-+        // Match the visual-space transform used by caret/text rect
-+        // queries so the native selection bounds stay aligned while zoomed.
-+        if (nsPresContext* rootContext =
-+                presContext->GetInProcessRootContentDocumentPresContext()) {
-+          aEvent->mReply->mRect =
-+              RoundedOut(ViewportUtils::DocumentRelativeLayoutToVisual(
-+                  aEvent->mReply->mRect, rootContext->PresShell()));
-+        }
-+        EnsureNonEmptyRect(aEvent->mReply->mRect);
-+        MOZ_ASSERT(aEvent->Succeeded());
-+        return NS_OK;
-+      }
-+    }
++    editorContent = control->GetContent();
++    editorFrame = control->GetScrollTargetFrame();
++  }
++#endif
++  rv = QueryContentRect(editorContent, aEvent);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++#ifdef XP_IOS
++  if (aNativeGeometry) {
++    aNativeGeometry->mRect = aEvent->mReply->mRect;
++    CollectNativeScrollReferences(editorContent->GetPrimaryFrame(),
++                                  aNativeGeometry->mScrollReferences);
 +  }
 +
-+  // For contenteditable elements (which don't have a text control
-+  // frame), find the nearest scroll container that clips the editor and use
-+  // its scroll port rect. Without this, the editor rect for overflowing
-+  // contenteditable divs would be the full element bounding rect, causing
-+  // selection UI to remain visible when content is scrolled out of view.
-+  if (nsIFrame* editorFrame =
-+          mRootElement ? mRootElement->GetPrimaryFrame() : nullptr) {
-+    ScrollContainerFrame* scf = nsLayoutUtils::GetNearestScrollContainerFrame(
-+        editorFrame, nsLayoutUtils::SCROLLABLE_SAME_DOC |
-+                         nsLayoutUtils::SCROLLABLE_INCLUDE_HIDDEN);
-+    if (scf) {
-+      nsPresContext* presContext = scf->PresContext();
-+      // Skip the root scroll container: its scroll port is just the viewport
-+      // which is already handled by ChildView bounds clipping on the native
-+      // side.
-+      nsIFrame* rootScrollFrame = nullptr;
-+      if (nsPresContext* rootContext =
-+              presContext->GetInProcessRootContentDocumentPresContext()) {
-+        if (PresShell* shell = rootContext->GetPresShell()) {
-+          rootScrollFrame = shell->GetRootScrollContainerFrame();
-+        }
++  // Check every parent that clips the editor, including its own scroll area.
++  for (nsIFrame* frame = editorFrame; frame;
++       frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
++    nsRect clip;
++    if (ScrollContainerFrame* scroller = do_QueryFrame(frame)) {
++      // ChildView bounds provide the top-level visual viewport clip.
++      nsPresContext* root = frame->PresContext()->GetRootPresContext();
++      if (frame == root->PresShell()->GetRootScrollContainerFrame()) {
++        continue;
 +      }
-+      if (scf != rootScrollFrame) {
-+        nsRect scrollPort = scf->GetScrollPortRect();
-+        rv = ConvertToRootRelativeOffset(scf, scrollPort);
-+        if (NS_SUCCEEDED(rv)) {
-+          aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
-+              scrollPort, presContext->AppUnitsPerDevPixel());
-+          if (nsPresContext* rootContext =
-+                  presContext->GetInProcessRootContentDocumentPresContext()) {
-+            aEvent->mReply->mRect =
-+                RoundedOut(ViewportUtils::DocumentRelativeLayoutToVisual(
-+                    aEvent->mReply->mRect, rootContext->PresShell()));
-+          }
-+          EnsureNonEmptyRect(aEvent->mReply->mRect);
-+          MOZ_ASSERT(aEvent->Succeeded());
-+          return NS_OK;
-+        }
++      clip = scroller->GetScrollPortRect();
++    } else {
++      const PhysicalAxes axes =
++          frame->ShouldApplyOverflowClipping(frame->StyleDisplay());
++      if (axes.isEmpty()) {
++        continue;
 +      }
-+    }
-+  }
 +
-   if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
-     return NS_ERROR_FAILURE;
++      nsRectCornerRadii radii;
++      nsMargin inset;
++      frame->ComputeOverflowClipRectRelativeToSelf(axes, clip, radii, inset);
++    }
++
++    // Put the clip and editor rect in the same coordinates before intersecting.
++    rv = ConvertToRootRelativeOffset(frame, clip);
++    NS_ENSURE_SUCCESS(rv, rv);
++    nsPresContext* context = frame->PresContext();
++    LayoutDeviceIntRect clipRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
++        clip, context->AppUnitsPerDevPixel());
++    if (nsPresContext* root =
++            context->GetInProcessRootContentDocumentPresContext()) {
++      clipRect = RoundedOut(ViewportUtils::DocumentRelativeLayoutToVisual(
++          clipRect, root->PresShell()));
++    }
++
++    if (aNativeGeometry) {
++      NativeTextInputRect& nativeClip =
++          *aNativeGeometry->mClipRects.AppendElement();
++      nativeClip.mRect = clipRect;
++      CollectNativeScrollReferences(frame, nativeClip.mScrollReferences);
++    }
++
++    // Preserve an empty clip when the editor is entirely out of view.
++    aEvent->mReply->mRect = aEvent->mReply->mRect.Intersect(clipRect);
    }
-@@ -3416,13 +3593,63 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
++#endif
+ 
+   MOZ_ASSERT(aEvent->Succeeded());
+   return NS_OK;
+@@ -3305,15 +4694,14 @@ Result<uint32_t, nsresult> ContentEventHandler::GetFlatTextLengthInRange(
+       } else {
+         length += GetTextLength(*textNode);
+       }
+-    } else if (ShouldBreakLineBefore(*content, aRootElement)) {
+-      // If the start position is start of this node but doesn't include the
+-      // open tag, don't append the line break length.
++    } else if (ShouldBreakLineBefore(*content, aRootElement) ||
++               IsNativeTextInputImage(*content)) {
++      // Don't count the node when the range starts after its opening tag.
+       if (content == aStartPosition.GetContainer() &&
+           !aStartPosition.IsBeforeOpenTag()) {
+         continue;
+       }
+-      // If the end position is before the open tag, don't append the line
+-      // break length.
++      // Don't count the node when the range ends before its opening tag.
+       if (content == endPosition.GetContainer() &&
+           endPosition.IsBeforeOpenTag()) {
+         continue;
+@@ -3407,8 +4795,8 @@ nsresult ContentEventHandler::AdjustCollapsedRangeMaybeIntoTextNode(
+   return NS_OK;
+ }
+ 
+-nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+-                                                          nsRect& aRect) {
++nsresult ContentEventHandler::ConvertToRootRelativeOffset(
++    nsIFrame* aFrame, nsRect& aRect, Maybe<gfx::Matrix>* aTransform) {
+   NS_ASSERTION(aFrame, "aFrame must not be null");
+ 
+   nsPresContext* thisPC = aFrame->PresContext();
+@@ -3416,12 +4804,76 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }
@@ -255,8 +1555,12 @@ index d11a218cd050..022fd510ad62 100644
      return NS_ERROR_FAILURE;
    }
  
-   aRect = nsLayoutUtils::TransformFrameRectToAncestor(aFrame, aRect, rootFrame);
- 
+-  aRect = nsLayoutUtils::TransformFrameRectToAncestor(aFrame, aRect, rootFrame);
++  Maybe<gfx::Matrix4x4Flagged> matrix;
++  aRect = nsLayoutUtils::TransformFrameRectToAncestor(
++      aFrame, aRect, rootFrame, nullptr, aTransform ? &matrix : nullptr);
++  const nsPoint transformedOrigin = aRect.TopLeft();
++
 +  const auto& fixedMargins = rootPresShell->GetFixedPositionMargins();
 +  if (fixedMargins && rootPC->IsKeyboardHiddenOrResizesContentMode() &&
 +      nsDisplayOwnLayer::HasDynamicToolbar(rootFrame)) {
@@ -306,6 +1610,56 @@ index d11a218cd050..022fd510ad62 100644
 +    aRect.y += offset;
 +  }
 +
++  if (aTransform) {
++    aTransform->reset();
++    gfx::Matrix affine;
++    if (matrix && matrix->CanDraw2D(&affine)) {
++      const LayoutDevicePoint offset = LayoutDevicePoint::FromAppUnits(
++          aRect.TopLeft() - transformedOrigin, rootPC->AppUnitsPerDevPixel());
++      affine.PostTranslate(offset.x, offset.y);
++      *aTransform = Some(affine);
++    }
++  }
+ 
    // TransformFrameRectToAncestor returned the rect in the ancestor's appUnits,
    // but we want it in aFrame's units (in case of different full-zoom factors),
-   // so convert back.
+@@ -3481,7 +4933,8 @@ static void AdjustRangeForSelection(const Element* aRootElement,
+   }
+ }
+ 
+-nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
++nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent,
++                                               ScrollFlags aScrollFlags) {
+   aEvent->mSucceeded = false;
+ 
+   // Get selection to manipulate
+@@ -3533,6 +4986,19 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
+     }
+   }
+ 
++  if (aEvent->mAssociateWithNext) {
++    nsFrameSelection* frameSelection = mSelection->GetFrameSelection();
++    // Native selection gestures bypass TakeFocus, which normally activates
++    // selection painting and records the selection used by the pres shell.
++    frameSelection->GetPresShell()->FrameSelectionWillTakeFocus(
++        *frameSelection, PresShell::CanMoveLastSelectionForToString::Yes);
++    // Don't reuse the old caret's direction for the new position.
++    frameSelection->UndefineCaretBidiLevel();
++    frameSelection->SetHint(*aEvent->mAssociateWithNext
++                                ? CaretAssociationHint::After
++                                : CaretAssociationHint::Before);
++  }
++
+   if (aEvent->mReversed) {
+     nsCOMPtr<nsINode> startNodeStrong(startNode);
+     nsCOMPtr<nsINode> endNodeStrong(endNode);
+@@ -3558,7 +5024,8 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
+   // `ContentEventHandler` is a `MOZ_STACK_CLASS`, so `mSelection` is known to
+   // be alive.
+   MOZ_KnownLive(mSelection)
+-      ->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION);
++      ->ScrollIntoView(nsISelectionController::SELECTION_FOCUS_REGION,
++                       AxisScrollParams(), AxisScrollParams(), aScrollFlags);
+   aEvent->mSucceeded = true;
+   return NS_OK;
+ }

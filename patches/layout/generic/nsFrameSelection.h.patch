@@ -1,0 +1,26 @@
+diff --git a/layout/generic/nsFrameSelection.h b/layout/generic/nsFrameSelection.h
+index ba8d11fb29da..31b40da00d8d 100644
+--- a/layout/generic/nsFrameSelection.h
++++ b/layout/generic/nsFrameSelection.h
+@@ -899,6 +899,21 @@ class nsFrameSelection final {
+         eSelectEndLine, eLogical);
+   }
+ 
++  /**
++   * Extend aRange to the next paragraph boundary in text order.
++   * aRangeDirection tells us which end of the range to start from.
++   */
++  template <typename RangeType>
++  MOZ_CAN_RUN_SCRIPT static mozilla::Result<RefPtr<RangeType>, nsresult>
++  CreateRangeExtendedToNextParagraphBoundary(
++      mozilla::PresShell& aPresShell,
++      const mozilla::LimitersAndCaretData& aLimitersAndCaretData,
++      const mozilla::dom::AbstractRange& aRange, nsDirection aRangeDirection) {
++    return CreateRangeExtendedToSomewhere<RangeType>(
++        aPresShell, aLimitersAndCaretData, aRange, aRangeDirection, eDirNext,
++        eSelectParagraph, eLogical);
++  }
++
+   /** Sets/Gets The display selection enum.
+    */
+   void SetDisplaySelection(int16_t aState) { mDisplaySelection = aState; }

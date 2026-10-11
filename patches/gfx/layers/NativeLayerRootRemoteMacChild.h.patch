@@ -1,0 +1,15 @@
+diff --git a/gfx/layers/NativeLayerRootRemoteMacChild.h b/gfx/layers/NativeLayerRootRemoteMacChild.h
+index 8859d3c05f1e..4fde4d85570f 100644
+--- a/gfx/layers/NativeLayerRootRemoteMacChild.h
++++ b/gfx/layers/NativeLayerRootRemoteMacChild.h
+@@ -43,6 +43,10 @@ class NativeLayerRootRemoteMacChild final : public NativeLayerRoot {
+   // commands message.
+   void WaitUntilCommitToScreenHasBeenProcessed() override;
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  void SetOnscreenCommitData(mozilla::ipc::ByteBuf&& aData) override;
++#endif
++
+   RefPtr<NativeLayerRemoteChild> GetRemoteChild() { return mRemoteChild; }
+ 
+  protected:

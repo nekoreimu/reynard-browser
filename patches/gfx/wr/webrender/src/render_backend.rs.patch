@@ -1,0 +1,16 @@
+diff --git a/gfx/wr/webrender/src/render_backend.rs b/gfx/wr/webrender/src/render_backend.rs
+index f5d82e208c4c..a6edd227f3e5 100644
+--- a/gfx/wr/webrender/src/render_backend.rs
++++ b/gfx/wr/webrender/src/render_backend.rs
+@@ -2009,7 +2009,10 @@ impl RenderBackend {
+         // async transforms.
+         if requested_frame {
+             if let Some(ref sampler) = win.sampler {
+-                frame_ops.append(&mut sampler.sample(document_id, generated_frame_id));
++                let (mut sampled_ops, mut sampled_notifications) =
++                    sampler.sample(document_id, generated_frame_id);
++                frame_ops.append(&mut sampled_ops);
++                notifications.append(&mut sampled_notifications);
+             }
+         }
+ 

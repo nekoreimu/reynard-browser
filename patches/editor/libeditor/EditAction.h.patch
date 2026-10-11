@@ -1,0 +1,48 @@
+diff --git a/editor/libeditor/EditAction.h b/editor/libeditor/EditAction.h
+index cccdcbfa6d48..5b4129efc62d 100644
+--- a/editor/libeditor/EditAction.h
++++ b/editor/libeditor/EditAction.h
+@@ -69,6 +69,9 @@ enum class EditAction {
+   // This may be set even when Selection is not collapsed.
+   eDeleteToEndOfSoftLine,
+ 
++  // Remove characters between the caret and the next paragraph boundary.
++  eDeleteToEndOfHardLine,
++
+   // eDeleteByDrag indicates to remove selection by dragging the content
+   // to different place.
+   eDeleteByDrag,
+@@ -569,6 +572,8 @@ inline EditorInputType ToInputType(EditAction aEditAction) {
+       return EditorInputType::eDeleteSoftLineBackward;
+     case EditAction::eDeleteToEndOfSoftLine:
+       return EditorInputType::eDeleteSoftLineForward;
++    case EditAction::eDeleteToEndOfHardLine:
++      return EditorInputType::eDeleteHardLineForward;
+     case EditAction::eDeleteByDrag:
+       return EditorInputType::eDeleteByDrag;
+     case EditAction::eCut:
+@@ -647,6 +652,7 @@ inline bool MayEditActionDeleteAroundCollapsedSelection(
+     case EditAction::eDeleteWordForward:
+     case EditAction::eDeleteToBeginningOfSoftLine:
+     case EditAction::eDeleteToEndOfSoftLine:
++    case EditAction::eDeleteToEndOfHardLine:
+       return true;
+     default:
+       return false;
+@@ -701,6 +707,7 @@ inline bool MayEditActionDeleteSelection(const EditAction aEditAction) {
+     case EditAction::eDeleteWordForward:
+     case EditAction::eDeleteToBeginningOfSoftLine:
+     case EditAction::eDeleteToEndOfSoftLine:
++    case EditAction::eDeleteToEndOfHardLine:
+     case EditAction::eDeleteByDrag:
+       return true;
+ 
+@@ -881,6 +888,8 @@ inline std::ostream& operator<<(std::ostream& aStream,
+       return aStream << "eDeleteToBeginningOfSoftLine";
+     case EditAction::eDeleteToEndOfSoftLine:
+       return aStream << "eDeleteToEndOfSoftLine";
++    case EditAction::eDeleteToEndOfHardLine:
++      return aStream << "eDeleteToEndOfHardLine";
+     case EditAction::eDeleteByDrag:
+       return aStream << "eDeleteByDrag";
+     case EditAction::eStartComposition:

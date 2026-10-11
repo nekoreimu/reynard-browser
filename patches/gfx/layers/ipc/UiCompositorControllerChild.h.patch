@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/ipc/UiCompositorControllerChild.h b/gfx/layers/ipc/UiCompositorControllerChild.h
-index 5ac77de4fbbd..3179dcde6817 100644
+index 5ac77de4fbbd..8084f279252e 100644
 --- a/gfx/layers/ipc/UiCompositorControllerChild.h
 +++ b/gfx/layers/ipc/UiCompositorControllerChild.h
 @@ -42,6 +42,8 @@ class UiCompositorControllerChild final
@@ -11,7 +11,22 @@ index 5ac77de4fbbd..3179dcde6817 100644
    bool ToolbarAnimatorMessageFromUI(const int32_t& aMessage);
    bool SetDefaultClearColor(const uint32_t& aColor);
  #ifdef MOZ_WIDGET_ANDROID
-@@ -87,6 +89,13 @@ class UiCompositorControllerChild final
+@@ -52,6 +54,14 @@ class UiCompositorControllerChild final
+ #endif
+   bool EnableLayerUpdateNotifications(const bool& aEnable);
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  void SetNativeTextInputScrollers(
++      const nsTArray<ScrollableLayerGuid>& aScrollers);
++  const nsTArray<ScrollableLayerGuid>& GetNativeTextInputScrollers() const {
++    return mNativeTextInputScrollers;
++  }
++#endif
++
+   void Destroy();
+ 
+ #ifdef MOZ_WIDGET_ANDROID
+@@ -87,6 +97,13 @@ class UiCompositorControllerChild final
        Maybe<ipc::FileDescriptor>&& aAcquireFence);
  
   private:
@@ -25,11 +40,18 @@ index 5ac77de4fbbd..3179dcde6817 100644
    explicit UiCompositorControllerChild(const uint64_t& aProcessToken,
                                         nsIWidget* aWidget);
    virtual ~UiCompositorControllerChild();
-@@ -101,6 +110,7 @@ class UiCompositorControllerChild final
+@@ -101,8 +118,14 @@ class UiCompositorControllerChild final
    uint64_t mProcessToken;
    Maybe<gfx::IntRect> mResize;
    Maybe<int32_t> mMaxToolbarHeight;
 +  Maybe<FixedLayerMargins> mFixedLayerMargins;
    Maybe<uint32_t> mDefaultClearColor;
    Maybe<bool> mLayerUpdateEnabled;
++
++#ifdef MOZ_WIDGET_UIKIT
++  nsTArray<ScrollableLayerGuid> mNativeTextInputScrollers;
++#endif
++
    RefPtr<nsIWidget> mWidget;
+ 
+ #ifdef MOZ_WIDGET_ANDROID

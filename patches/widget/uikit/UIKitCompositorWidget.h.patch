@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/UIKitCompositorWidget.h b/widget/uikit/UIKitCompositorWidget.h
 new file mode 100644
-index 000000000000..b064053ad91f
+index 000000000000..49688263b4dd
 --- /dev/null
 +++ b/widget/uikit/UIKitCompositorWidget.h
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,66 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,8 +17,13 @@ index 000000000000..b064053ad91f
 +#include "CompositorWidget.h"
 +#include "mozilla/ipc/Endpoint.h"
 +#include "mozilla/layers/NativeLayer.h"
++#include "mozilla/webrender/WebRenderTypes.h"
 +
 +namespace mozilla {
++struct NativeTextInputScrollUpdate;
++namespace wr {
++class TransactionWrapper;
++}  // namespace wr
 +namespace layers {
 +class PNativeLayerRemoteChild;
 +}
@@ -56,6 +61,10 @@ index 000000000000..b064053ad91f
 +
 +  RefPtr<layers::NativeLayerRoot> mNativeLayerRoot;
 +};
++
++void AttachNativeTextInputScrollUpdates(
++    wr::WindowId aWindowId, wr::TransactionWrapper& aTransaction,
++    const nsTArray<NativeTextInputScrollUpdate>& aUpdates);
 +
 +}  // namespace widget
 +}  // namespace mozilla

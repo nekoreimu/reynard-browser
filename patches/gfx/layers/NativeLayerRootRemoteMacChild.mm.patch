@@ -1,0 +1,18 @@
+diff --git a/gfx/layers/NativeLayerRootRemoteMacChild.mm b/gfx/layers/NativeLayerRootRemoteMacChild.mm
+index aedf46b0a438..81ca4faed84f 100644
+--- a/gfx/layers/NativeLayerRootRemoteMacChild.mm
++++ b/gfx/layers/NativeLayerRootRemoteMacChild.mm
+@@ -151,6 +151,13 @@
+   mRemoteChild->SendFlush();
+ }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++void NativeLayerRootRemoteMacChild::SetOnscreenCommitData(
++    mozilla::ipc::ByteBuf&& aData) {
++  mCommandQueue->AppendCommand(CommandOnscreenCommitData(std::move(aData)));
++}
++#endif
++
+ void NativeLayerRootRemoteMacChild::CommitForSnapshot(CALayer* aRootCALayer) {
+   [CATransaction begin];
+   [CATransaction setDisableActions:YES];  // disable cross-fade

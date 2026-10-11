@@ -1,8 +1,22 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-index c50cce23a949..833c3c6bb7cb 100644
+index c50cce23a949..26f4bb51a412 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-@@ -2810,6 +2810,7 @@ nsEventStatus AsyncPanZoomController::OnPanMayBegin(
+@@ -41,9 +41,10 @@
+ #include "mozilla/EventForwards.h"      // for nsEventStatus_*
+ #include "mozilla/EventStateManager.h"  // for EventStateManager
+ #include "mozilla/MouseEvents.h"        // for WidgetWheelEvent
+-#include "mozilla/Preferences.h"        // for Preferences
+-#include "mozilla/RecursiveMutex.h"     // for RecursiveMutexAutoLock, etc
+-#include "mozilla/RefPtr.h"             // for RefPtr
++#include "mozilla/NativeTextInput.h"
++#include "mozilla/Preferences.h"     // for Preferences
++#include "mozilla/RecursiveMutex.h"  // for RecursiveMutexAutoLock, etc
++#include "mozilla/RefPtr.h"          // for RefPtr
+ #include "mozilla/ScrollTypes.h"
+ #include "mozilla/ServoStyleConsts.h"  // for StyleComputedTimingFunction
+ #include "mozilla/StaticPrefs_apz.h"
+@@ -2810,6 +2811,7 @@ nsEventStatus AsyncPanZoomController::OnPanMayBegin(
    APZC_LOG_DETAIL("got a pan-maybegin in state %s\n", this,
                    ToString(mState).c_str());
  
@@ -10,7 +24,7 @@ index c50cce23a949..833c3c6bb7cb 100644
    StartTouch(aEvent.mLocalPanStartPoint, aEvent.mTimeStamp);
    MOZ_ASSERT(GetCurrentPanGestureBlock());
    GetCurrentPanGestureBlock()->GetOverscrollHandoffChain()->CancelAnimations(
-@@ -2825,6 +2826,7 @@ nsEventStatus AsyncPanZoomController::OnPanCancelled(
+@@ -2825,6 +2827,7 @@ nsEventStatus AsyncPanZoomController::OnPanCancelled(
  
    mX.CancelGesture();
    mY.CancelGesture();
@@ -18,7 +32,7 @@ index c50cce23a949..833c3c6bb7cb 100644
  
    MOZ_ASSERT(GetCurrentPanGestureBlock());
    GetCurrentPanGestureBlock()
-@@ -2846,6 +2848,13 @@ nsEventStatus AsyncPanZoomController::OnPanBegin(
+@@ -2846,6 +2849,13 @@ nsEventStatus AsyncPanZoomController::OnPanBegin(
    GetCurrentPanGestureBlock()->GetOverscrollHandoffChain()->CancelAnimations(
        ExcludeOverscroll);
  
@@ -32,7 +46,7 @@ index c50cce23a949..833c3c6bb7cb 100644
    StartTouch(aEvent.mLocalPanStartPoint, aEvent.mTimeStamp);
  
    if (!UsingStatefulAxisLock()) {
-@@ -3106,6 +3115,13 @@ nsEventStatus AsyncPanZoomController::OnPan(
+@@ -3106,6 +3116,13 @@ nsEventStatus AsyncPanZoomController::OnPan(
                                      aEvent.mTimeStamp);
    }
  
@@ -46,7 +60,7 @@ index c50cce23a949..833c3c6bb7cb 100644
    if (aFingersOnTouchpad == FingersOnTouchpad::No) {
      if (IsOverscrolled() && GetState() != OVERSCROLL_ANIMATION) {
        StartOverscrollAnimation(velocity, GetOverscrollSideBits());
-@@ -3147,6 +3163,9 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
+@@ -3147,6 +3164,9 @@ nsEventStatus AsyncPanZoomController::OnPanEnd(const PanGestureInput& aEvent) {
    // Use HandleEndOfPan for fling on platforms that don't
    // emit momentum events (Gtk).
    if (aEvent.mSimulateMomentum) {
@@ -56,7 +70,7 @@ index c50cce23a949..833c3c6bb7cb 100644
      return HandleEndOfPan();
    }
  
-@@ -3265,6 +3284,7 @@ nsEventStatus AsyncPanZoomController::OnPanInterrupted(
+@@ -3265,6 +3285,7 @@ nsEventStatus AsyncPanZoomController::OnPanInterrupted(
    APZC_LOG_DETAIL("got a pan-interrupted in state %s\n", this,
                    ToString(mState).c_str());
  
@@ -64,7 +78,7 @@ index c50cce23a949..833c3c6bb7cb 100644
    CancelAnimation();
  
    return nsEventStatus_eIgnore;
-@@ -4907,6 +4927,20 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4907,6 +4928,22 @@ void AsyncPanZoomController::RequestContentRepaint(
    RepaintRequest request(Metrics(), aDisplayportMargins, aUpdateType,
                           animationType, mScrollGeneration, mLastSnapTargetIds,
                           IsInScrollingGesture());
@@ -72,20 +86,22 @@ index c50cce23a949..833c3c6bb7cb 100644
 +      (!Metrics().IsSoftwareKeyboardVisible() ||
 +       Metrics().GetInteractiveWidget() ==
 +           dom::InteractiveWidget::ResizesContent)) {
-+    const ScreenMargin margins = mCompositorFixedLayerMargins -
-+                                 mLastContentPaintMetrics.GetFixedLayerMargins();
++    const ScreenMargin margins =
++        mCompositorFixedLayerMargins -
++        mLastContentPaintMetrics.GetFixedLayerMargins();
 +    request.SetFixedPositionMargins(Some(CSSMargin(
 +        ToCSSPixels(ViewAs<ParentLayerPixel>(
 +            margins.top, PixelCastJustification::ScreenIsParentLayerForRoot)),
 +        0,
 +        ToCSSPixels(ViewAs<ParentLayerPixel>(
-+            margins.bottom, PixelCastJustification::ScreenIsParentLayerForRoot)),
++            margins.bottom,
++            PixelCastJustification::ScreenIsParentLayerForRoot)),
 +        0)));
 +  }
  
    if (request.IsRootContent() && request.GetZoom() != mLastNotifiedZoom &&
        mState != PINCHING && mState != ANIMATING_ZOOM) {
-@@ -4922,6 +4956,10 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4922,6 +4959,10 @@ void AsyncPanZoomController::RequestContentRepaint(
            mLastPaintRequestMetrics.GetDisplayPortMargins(), EPSILON) &&
        request.GetVisualScrollOffset().WithinEpsilonOf(
            mLastPaintRequestMetrics.GetVisualScrollOffset(), EPSILON) &&
@@ -96,7 +112,50 @@ index c50cce23a949..833c3c6bb7cb 100644
        request.GetPresShellResolution() ==
            mLastPaintRequestMetrics.GetPresShellResolution() &&
        request.GetZoom() == mLastPaintRequestMetrics.GetZoom() &&
-@@ -5633,12 +5671,18 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5310,6 +5351,42 @@ CSSToParentLayerScale AsyncPanZoomController::GetEffectiveZoom(
+   return Metrics().GetZoom();
+ }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++NativeTextInputScrollUpdate
++AsyncPanZoomController::GetNativeTextInputScrollUpdate() const {
++  RecursiveMutexAutoLock lock(mRecursiveMutex);
++  NativeTextInputScrollUpdate update;
++  update.mGuid = GetGuid();
++  update.mGeneration = Metrics().GetScrollGeneration();
++  update.mVisualOffset = GetEffectiveScrollOffset(eForCompositing, lock);
++  update.mLayoutOffset =
++      GetEffectiveLayoutViewport(eForCompositing, lock).TopLeft();
++  update.mZoom = GetEffectiveZoom(eForCompositing, lock).scale;
++
++  // Use the same scale as WebRender's scroll offsets.
++  const CSSToParentLayerScale overscrollScale =
++      Metrics().LayersPixelsPerCSSPixel() * LayerToParentLayerScale(1.0f);
++  const CSSPoint overscrollOffset = GetOverscrollTransform(eForCompositing)
++                                        .TransformPoint(ParentLayerPoint()) /
++                                    overscrollScale;
++
++  // Shift both offsets so fixed content stays still during the bounce.
++  update.mVisualOffset -= overscrollOffset;
++  update.mLayoutOffset -= overscrollOffset;
++  update.mScrolling =
++      IsTransformingState(mState) || overscrollOffset != CSSPoint();
++
++  if (!update.mScrolling) {
++    const auto transform = GetCurrentAsyncTransform(
++        eForCompositing, {AsyncTransformComponent::eLayout});
++    update.mScrolling =
++        gfx::RoundedToInt(transform.mTranslation) != ParentLayerIntPoint();
++  }
++
++  return update;
++}
++#endif
++
+ void AsyncPanZoomController::AdvanceToNextSample() {
+   AssertOnSamplerThread();
+   RecursiveMutexAutoLock lock(mRecursiveMutex);
+@@ -5633,12 +5710,18 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
    // XXX Suspicious comparison between layout and visual scroll offsets.
    // This may not do the right thing when we're zoomed in.
    CSSPoint lastScrollOffset = mLastContentPaintMetrics.GetLayoutScrollOffset();
@@ -120,7 +179,7 @@ index c50cce23a949..833c3c6bb7cb 100644
    if (aScrollMetadata.DidContentGetPainted()) {
      mLastContentPaintMetadata = aScrollMetadata;
    }
-@@ -5693,7 +5737,7 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5693,7 +5776,7 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
    // TODO if we're in a drag and scrollOffsetUpdated is set then we want to
    // ignore it
  
@@ -129,7 +188,19 @@ index c50cce23a949..833c3c6bb7cb 100644
    RepaintUpdateType contentRepaintType = RepaintUpdateType::eNone;
    bool viewportSizeUpdated = false;
    bool needToReclampScroll = false;
-@@ -5766,6 +5810,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5741,6 +5824,11 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+ 
+     mExpectedGeckoMetrics.UpdateFrom(aLayerMetrics);
+ 
++    if (Metrics().IsRootContent() && Metrics().GetObscuredTopInset() > 0) {
++      needContentRepaint = true;
++      contentRepaintType = RepaintUpdateType::eVisualUpdate;
++    }
++
+     for (auto& sampledState : mSampledState) {
+       sampledState.UpdateScrollProperties(Metrics());
+       sampledState.UpdateZoomProperties(Metrics());
+@@ -5766,6 +5854,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
      // If we're not taking the aLayerMetrics wholesale we still need to pull
      // in some things into our local Metrics() because these things are
      // determined by Gecko and our copy in Metrics() may be stale.
@@ -139,7 +210,7 @@ index c50cce23a949..833c3c6bb7cb 100644
  
      if (Metrics().GetLayoutViewport().Size() !=
          aLayerMetrics.GetLayoutViewport().Size()) {
-@@ -5854,6 +5901,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5854,6 +5945,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
            aLayerMetrics.GetCompositionSizeWithoutDynamicToolbar());
        needToReclampScroll = true;
      }
@@ -160,7 +231,7 @@ index c50cce23a949..833c3c6bb7cb 100644
      if (Metrics().IsRootContent()) {
        // If the composition size changed, the compositor's layout viewport
        // offset may have changed (to keep the layout viewport enclosing the
-@@ -5970,7 +6031,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5970,7 +6075,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
                     "Smooth relative update should never happen");
          APZC_LOG("%p smooth scrolling to %s\n", this,
                   ToString(scrollUpdate.GetDestination()).c_str());
@@ -170,7 +241,7 @@ index c50cce23a949..833c3c6bb7cb 100644
        }
  
        ScrollAnimationKind animationKind =
-@@ -6187,7 +6249,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -6187,7 +6293,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
               ToString(aLayerMetrics.GetVisualDestination()).c_str(),
               (int)aLayerMetrics.GetVisualScrollUpdateType());
      bool offsetChanged = Metrics().ClampAndSetVisualScrollOffset(
@@ -180,7 +251,7 @@ index c50cce23a949..833c3c6bb7cb 100644
  
      // If this is the first time we got metrics for this content (isDefault) and
      // the update type was none and the offset didn't change then we don't have
-@@ -6983,12 +7046,17 @@ Maybe<CSSSnapDestination> AsyncPanZoomController::FindSnapPointNear(
+@@ -6983,12 +7090,17 @@ Maybe<CSSSnapDestination> AsyncPanZoomController::FindSnapPointNear(
    APZC_LOG("%p scroll snapping near %s\n", this,
             ToString(aDestination).c_str());
    CSSRect scrollRange = Metrics().CalculateScrollRange();
@@ -202,7 +273,7 @@ index c50cce23a949..833c3c6bb7cb 100644
      // GetSnapPointForDestination() can produce a destination that's outside
      // of the scroll frame's scroll range. Clamp it here (this matches the
      // behaviour of the main-thread code path, which clamps it in
-@@ -7257,9 +7325,60 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
+@@ -7257,9 +7369,60 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
    return mCompositorFixedLayerMargins;
  }
  

@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/TextInputHandler.mm b/widget/uikit/TextInputHandler.mm
-index e8f05ad59f6f..d88782d134d5 100644
+index e8f05ad59f6f..ed7a74239aac 100644
 --- a/widget/uikit/TextInputHandler.mm
 +++ b/widget/uikit/TextInputHandler.mm
 @@ -2,16 +2,22 @@
@@ -25,7 +25,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  #include "mozilla/WidgetUtils.h"
  #include "nsIWidget.h"
  #include "nsObjCExceptions.h"
-@@ -20,21 +26,478 @@
+@@ -20,21 +26,486 @@
  
  mozilla::LazyLogModule gIMELog("TextInputHandler");
  
@@ -36,12 +36,16 @@ index e8f05ad59f6f..d88782d134d5 100644
 +@interface ChildView (TextInputNotifications)
 +
 +- (void)selectionGeometryChanged;
++- (void)clearTextAnnotations;
 +
 +@end
 +
 +@interface UIKeyboardImpl : NSObject
 ++ (instancetype)sharedInstance;
 +- (BOOL)isInHardwareKeyboardMode;
++- (BOOL)isShifted;
++- (BOOL)isAutoShifted;
++- (BOOL)isShiftLocked;
 +- (BOOL)handleKeyTextCommandForCurrentEvent;
 +- (BOOL)handleKeyAppCommandForCurrentEvent;
 +- (BOOL)handleKeyInputMethodCommandForCurrentEvent;
@@ -97,7 +101,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +}
 +
 +static already_AddRefed<TextRangeArray> CreateTextRangeArrayForMarkedText(
-+    NSUInteger aTextLength, const NSRange& aSelectedRange) {
++    NSUInteger aTextLength, const NSRange& aSelectedRange,
++    const TextRangeArray* aStyles) {
 +  RefPtr<TextRangeArray> ranges = new TextRangeArray();
 +  if (!aTextLength) {
 +    return ranges.forget();
@@ -131,6 +136,22 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    rawSuffix.mEndOffset = textLength;
 +    rawSuffix.mRangeType = TextRangeType::eRawClause;
 +    ranges->AppendElement(rawSuffix);
++  }
++
++  if (aStyles) {
++    RefPtr<TextRangeArray> styledRanges = new TextRangeArray();
++    for (const auto& clause : *ranges) {
++      for (const auto& style : *aStyles) {
++        TextRange part = clause;
++        part.mStartOffset = std::max(clause.mStartOffset, style.mStartOffset);
++        part.mEndOffset = std::min(clause.mEndOffset, style.mEndOffset);
++        if (part.mStartOffset < part.mEndOffset) {
++          part.mRangeStyle = style.mRangeStyle;
++          styledRanges->AppendElement(part);
++        }
++      }
++    }
++    ranges = styledRanges;
 +  }
 +
 +  TextRange caret;
@@ -181,53 +202,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  MOZ_RELEASE_ASSERT(keyboardClass);
 +  UIKeyboardImpl* keyboard = [keyboardClass sharedInstance];
 +  MOZ_RELEASE_ASSERT(keyboard);
-+  if ([keyboard isInHardwareKeyboardMode]) {
-+    return mKeyboardSupport->HandleKeyEvent(aEvent);
-+  }
-+
-+  if (!aEvent ||
-+      (aEvent.type != WebEventKeyDown && aEvent.type != WebEventKeyUp)) {
-+    return false;
-+  }
-+  if (aEvent.type == WebEventKeyUp ||
-+      (aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged)) {
-+    return true;
-+  }
-+  if ([keyboard handleKeyInputMethodCommandForCurrentEvent]) {
-+    return true;
-+  }
-+
-+  const bool isCharacterEvent = IsCharacterKeyEvent(aEvent);
-+  if (aEvent.modifierFlags & WebEventFlagMaskCommandKey) {
-+    return false;
-+  }
-+
-+  NSString* characters = aEvent.characters;
-+  if (!characters.length) {
-+    return false;
-+  }
-+  switch ([characters characterAtIndex:0]) {
-+    case kBackspaceCharacter:
-+    case kDeleteCharacter:
-+      [keyboard deleteFromInputWithFlags:aEvent.keyboardFlags];
-+      return true;
-+    case kEnterCharacter:
-+    case kCarriageReturnCharacter:
-+    case kNewlineCharacter:
-+      if (isCharacterEvent) {
-+        [keyboard addInputString:@"\n" withFlags:0 withInputManagerHint:nil];
-+        return true;
-+      }
-+      return false;
-+    default:
-+      if (isCharacterEvent) {
-+        [keyboard addInputString:characters
-+                       withFlags:aEvent.keyboardFlags
-+            withInputManagerHint:aEvent.inputManagerHint];
-+        return true;
-+      }
-+      return false;
-+  }
++  return [keyboard isInHardwareKeyboardMode] &&
++         mKeyboardSupport->HandleKeyEvent(aEvent);
 +}
 +
 +void TextInputHandler::HandleModifierFlagsChanged(
@@ -344,7 +320,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +
 +bool TextInputHandler::DispatchPhysicalKeyDown(WebEvent* aEvent,
 +                                               bool aForceRepeat,
-+                                               bool aHasCurrentNativeEvent) {
++                                               bool aHasCurrentNativeEvent,
++                                               Maybe<Command>& aCommand) {
 +  if (Destroyed()) {
 +    return false;
 +  }
@@ -365,7 +342,7 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    MOZ_RELEASE_ASSERT(keyboardClass);
 +    keyboard = [keyboardClass sharedInstance];
 +    MOZ_RELEASE_ASSERT(keyboard);
-+    if (aHasCurrentNativeEvent && !hasShiftModifier) {
++    if (!hasShiftModifier) {
 +      currentKeyEvent->mInterpretingInputMethod = true;
 +      const bool inputMethodHandled =
 +          [keyboard handleKeyInputMethodCommandForCurrentEvent];
@@ -380,9 +357,16 @@ index e8f05ad59f6f..d88782d134d5 100644
 +
 +  auto dispatchInput = [&] {
 +    if (currentKeyEvent->mInputMethodHandled ||
-+        currentKeyEvent->mCompositionDispatched ||
-+        currentKeyEvent->mKeyPressPreventedByContent ||
-+        currentKeyEvent->mGeckoTransactionFailed || hasShiftModifier ||
++        currentKeyEvent->mCompositionDispatched) {
++      return;
++    }
++
++    if (currentKeyEvent->mKeyPressPreventedByContent ||
++        currentKeyEvent->mGeckoTransactionFailed) {
++      return;
++    }
++
++    if (hasShiftModifier ||
 +        (aEvent.modifierFlags & WebEventFlagMaskCommandKey)) {
 +      return;
 +    }
@@ -391,6 +375,7 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    if (!characters.length) {
 +      return;
 +    }
++
 +    switch ([characters characterAtIndex:0]) {
 +      case kBackspaceCharacter:
 +      case kDeleteCharacter:
@@ -416,22 +401,32 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    }
 +  };
 +
++  auto canDispatchKeyInput = [&] {
++    if (currentKeyEvent->mInputMethodHandled ||
++        currentKeyEvent->mCompositionDispatched) {
++      return false;
++    }
++
++    return !currentKeyEvent->mKeyDownHandled && !Destroyed();
++  };
++
++  if (aForceRepeat && aCommand && canDispatchKeyInput()) {
++    if (widget->GetInputContext().mIMEState.IsEditable()) {
++      HandleCommand(aCommand.value());
++    }
++  }
++
 +  if (useInputMethod &&
 +      !(aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged) &&
-+      !currentKeyEvent->mInputMethodHandled &&
-+      !currentKeyEvent->mCompositionDispatched &&
-+      !currentKeyEvent->mKeyDownHandled && !Destroyed()) {
++      canDispatchKeyInput()) {
 +    const bool isCharacterEvent = IsCharacterKeyEvent(aEvent);
-+    if (aHasCurrentNativeEvent && !hasShiftModifier) {
++    if (!isCharacterEvent) {
 +      currentKeyEvent->mInputMethodHandled |=
 +          [keyboard handleKeyTextCommandForCurrentEvent];
 +    }
 +
-+    if (isCharacterEvent && !hasShiftModifier && aHasCurrentNativeEvent &&
-+        !currentKeyEvent->mInputMethodHandled &&
-+        !currentKeyEvent->mCompositionDispatched &&
-+        !currentKeyEvent->mKeyDownHandled &&
-+        !currentKeyEvent->mGeckoTransactionFailed && !Destroyed()) {
++    if (isCharacterEvent && !hasShiftModifier &&
++        !currentKeyEvent->mGeckoTransactionFailed && canDispatchKeyInput()) {
 +      currentKeyEvent->mInputMethodHandled |=
 +          [keyboard handleKeyAppCommandForCurrentEvent];
 +    }
@@ -439,17 +434,17 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    dispatchInput();
 +  }
 +
-+  if (!currentKeyEvent->mInputMethodHandled &&
-+      !currentKeyEvent->mCompositionDispatched &&
-+      !currentKeyEvent->mKeyDownHandled && !Destroyed()) {
++  if (canDispatchKeyInput()) {
 +    DispatchCurrentKeyPress();
 +  }
 +
-+  bool handled = !currentKeyEvent->mGeckoTransactionFailed && !Destroyed() &&
-+                 (currentKeyEvent->mKeyDownDispatched ||
-+                  currentKeyEvent->mKeyPressDispatched ||
-+                  currentKeyEvent->mInputMethodHandled ||
-+                  currentKeyEvent->mCompositionDispatched);
++  const bool dispatched = currentKeyEvent->mKeyDownDispatched ||
++                          currentKeyEvent->mKeyPressDispatched ||
++                          currentKeyEvent->mInputMethodHandled ||
++                          currentKeyEvent->mCompositionDispatched;
++  const bool handled =
++      !currentKeyEvent->mGeckoTransactionFailed && !Destroyed() && dispatched;
++  aCommand = currentKeyEvent->mCommand;
 +  MOZ_ASSERT(mCurrentKeyEvents.LastElement().get() == currentKeyEvent);
 +  mCurrentKeyEvents.RemoveLastElement();
 +  return handled;
@@ -482,9 +477,22 @@ index e8f05ad59f6f..d88782d134d5 100644
 +      break;
 +    case NOTIFY_IME_OF_BLUR:
 +      ClearCompositionState();
-+      break;
++      [[fallthrough]];
++    case NOTIFY_IME_OF_FOCUS:
++      mNativeTextInputState.reset();
++      InvalidateTextInputState(true);
++      [static_cast<ChildView*>(mWidget->GetNativeData(NS_NATIVE_WIDGET))
++          clearTextAnnotations];
++      [[fallthrough]];
++    case NOTIFY_IME_OF_TEXT_CHANGE:
 +    case NOTIFY_IME_OF_SELECTION_CHANGE:
 +    case NOTIFY_IME_OF_POSITION_CHANGE: {
++      if (aNotification.mMessage == NOTIFY_IME_OF_POSITION_CHANGE) {
++        InvalidateTextInputGeometry();
++      } else if (aNotification.mMessage == NOTIFY_IME_OF_TEXT_CHANGE ||
++                 aNotification.mMessage == NOTIFY_IME_OF_SELECTION_CHANGE) {
++        InvalidateTextInputState();
++      }
 +      ChildView* view =
 +          static_cast<ChildView*>(mWidget->GetNativeData(NS_NATIVE_WIDGET));
 +      if (view) {
@@ -506,7 +514,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  }
  
  void TextInputHandler::OnRemovedFrom(
-@@ -43,7 +506,37 @@
+@@ -43,7 +514,38 @@
  void TextInputHandler::WillDispatchKeyboardEvent(
      TextEventDispatcher* aTextEventDispatcher,
      WidgetKeyboardEvent& aKeyboardEvent, uint32_t aIndexOfKeypress,
@@ -541,11 +549,12 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  mMarkedRange = NSMakeRange(NSNotFound, 0);
 +  mSelectedRangeOverride.reset();
 +  mMarkedText.Truncate();
++  mMarkedTextStyles = nullptr;
 +}
  
  bool TextInputHandler::InsertText(NSString* aText) {
    nsString str;
-@@ -57,6 +550,68 @@
+@@ -57,6 +559,53 @@
      return false;
    }
  
@@ -560,7 +569,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    }
 +    if (!HasMarkedText() && str.Length() == 1 &&
 +        !currentKeyEvent->mInputMethodHandled &&
-+        !currentKeyEvent->mInterpretingInputMethod) {
++        !currentKeyEvent->mInterpretingInputMethod &&
++        IsSameInputString(currentKeyEvent->mEvent, str)) {
 +      if (!DispatchCurrentKeyDown(false)) {
 +        currentKeyEvent->mInputMethodHandled = true;
 +        return false;
@@ -595,31 +605,28 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    return NS_SUCCEEDED(rv) && !Destroyed();
 +  }
 +
-+  if (currentKeyEvent) {
-+    nsEventStatus status = nsEventStatus_eIgnore;
-+    nsresult rv = mDispatcher->BeginNativeInputTransaction();
-+    if (NS_FAILED(rv)) {
-+      MarkCurrentKeyEventFailed();
-+      return false;
-+    }
-+    rv = mDispatcher->CommitComposition(status, &str, nullptr);
-+    if (NS_FAILED(rv)) {
-+      MarkCurrentKeyEventFailed();
-+    } else {
-+      currentKeyEvent->mCompositionDispatched = true;
-+    }
-+    return NS_SUCCEEDED(rv) && !Destroyed();
-+  }
-+
    if (str.Length() == 1) {
      char16_t charCode = str[0];
      if (charCode == 0x0a) {
-@@ -91,6 +646,129 @@
-   return true;
- }
+@@ -71,24 +620,154 @@
+     }
+   }
  
++  if (str.IsEmpty()) {
++    return true;
++  }
++  WidgetContentCommandEvent event(true, eContentCommandInsertText, mWidget);
++  event.mString = Some(str);
++  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
++  return event.mSucceeded && !Destroyed();
++}
++
 +bool TextInputHandler::SetMarkedText(NSString* aText,
-+                                     const NSRange& aSelectedRange) {
++                                     const NSRange& aSelectedRange,
++                                     TextRangeArray* aStyles) {
 +  if (Destroyed()) {
 +    return false;
 +  }
@@ -636,13 +643,18 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  const NSRange selectedRange =
 +      ClampCompositionSelectionRange(aSelectedRange, text.Length());
 +  mMarkedText = text;
++  mMarkedTextStyles = aStyles;
 +
-+  nsEventStatus status = nsEventStatus_eIgnore;
+   nsEventStatus status = nsEventStatus_eIgnore;
+-  RefPtr<nsWindow> widget(mWidget);
+-  if (!DispatchKeyDownEvent(NS_VK_PROCESSKEY, KEY_NAME_INDEX_Process, 0,
+-                            status)) {
 +  nsresult rv = mDispatcher->BeginNativeInputTransaction();
 +  if (NS_FAILED(rv)) {
 +    MarkCurrentKeyEventFailed();
-+    return false;
-+  }
+     return false;
+   }
+-  if (Destroyed()) {
 +
 +  if (!HasMarkedText()) {
 +    NSRange selection = NSMakeRange(NSNotFound, 0);
@@ -678,8 +690,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    return NS_SUCCEEDED(rv) && !Destroyed();
 +  }
 +
-+  RefPtr<TextRangeArray> ranges =
-+      CreateTextRangeArrayForMarkedText(text.Length(), selectedRange);
++  RefPtr<TextRangeArray> ranges = CreateTextRangeArrayForMarkedText(
++      text.Length(), selectedRange, mMarkedTextStyles);
 +  rv = mDispatcher->SetPendingComposition(text, ranges);
 +  if (NS_FAILED(rv)) {
 +    MarkCurrentKeyEventFailed();
@@ -695,11 +707,13 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  return NS_SUCCEEDED(rv) && !Destroyed();
 +}
 +
-+bool TextInputHandler::UnmarkText() {
++bool TextInputHandler::UnmarkText(bool aPreserveSelection) {
 +  if (Destroyed() || !HasMarkedText()) {
-+    return false;
-+  }
-+
+     return false;
+   }
+ 
+-  mDispatcher->CommitComposition(status, &str, nullptr);
+-  if (widget->Destroyed()) {
 +  KeyEventState* currentKeyEvent = CurrentKeyEvent();
 +  if (currentKeyEvent) {
 +    if (!PrepareCurrentKeyForIME()) {
@@ -711,17 +725,32 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  nsresult rv = mDispatcher->BeginNativeInputTransaction();
 +  if (NS_FAILED(rv)) {
 +    MarkCurrentKeyEventFailed();
-+    return false;
-+  }
-+
+     return false;
+   }
+ 
+-  DispatchKeyUpEvent(NS_VK_PROCESSKEY, KEY_NAME_INDEX_Process, 0, status);
++  Maybe<NSRange> selection = mSelectedRangeOverride;
 +  rv = mDispatcher->CommitComposition(status, nullptr, nullptr);
 +  if (NS_FAILED(rv)) {
 +    MarkCurrentKeyEventFailed();
 +  } else if (currentKeyEvent) {
 +    currentKeyEvent->mCompositionDispatched = true;
 +  }
+ 
+-  return true;
 +  ClearCompositionState();
-+  return NS_SUCCEEDED(rv) && !Destroyed();
++  if (NS_FAILED(rv) || Destroyed()) {
++    return false;
++  }
++
++  if (aPreserveSelection && selection) {
++    WidgetSelectionEvent event(true, eSetSelection, mWidget);
++    event.mOffset = selection->location;
++    event.mLength = selection->length;
++    event.mExpandToClusterBoundary = false;
++    mWidget->DispatchWindowEvent(event);
++  }
++  return !Destroyed();
 +}
 +
 +bool TextInputHandler::CancelMarkedText() {
@@ -739,53 +768,203 @@ index e8f05ad59f6f..d88782d134d5 100644
 +  rv = mDispatcher->CommitComposition(status, &empty, nullptr);
 +  ClearCompositionState();
 +  return NS_SUCCEEDED(rv) && !Destroyed();
-+}
-+
+ }
+ 
  bool TextInputHandler::HandleCommand(Command aCommand) {
-   MOZ_LOG(gIMELog, LogLevel::Info,
-           ("%p   TextInputHandler::HandleCommand, aCommand=%s", this,
-@@ -100,6 +778,15 @@
+@@ -100,32 +779,51 @@
      return false;
    }
  
+-  if (aCommand != Command::DeleteCharBackward) {
+-    return false;
+-  }
+-
+-  nsEventStatus status = nsEventStatus_eIgnore;
+-  if (!DispatchKeyDownEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace, 0, status)) {
 +  if (KeyEventState* currentKeyEvent = CurrentKeyEvent()) {
 +    currentKeyEvent->mCommand = Some(aCommand);
 +    if (DispatchCurrentKeyDown(false)) {
 +      DispatchCurrentKeyPress();
 +    }
 +    currentKeyEvent->mInputMethodHandled = true;
-+    return true;
-+  }
-+
-   if (aCommand != Command::DeleteCharBackward) {
-     return false;
+     return true;
    }
-@@ -128,6 +815,23 @@
-   return true;
- }
+-  if (Destroyed() || status == nsEventStatus_eConsumeNoDefault) {
+-    return true;
++
++  NativeTextInputRequest request;
++  switch (aCommand) {
++    case Command::FormatBold:
++      request.mQuery = NativeTextInputQuery::ToggleBold;
++      break;
++    case Command::FormatItalic:
++      request.mQuery = NativeTextInputQuery::ToggleItalic;
++      break;
++    case Command::FormatUnderline:
++      request.mQuery = NativeTextInputQuery::ToggleUnderline;
++      break;
++    case Command::DeleteCharBackward:
++      return EmulateKeyboardEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace, 0);
++    default:
++      return false;
+   }
  
-+bool TextInputHandler::HandlePhysicalDeleteBackward(
-+    bool aHasIMEBuffer, bool aHasKoreanComposition) {
+-  // TODO: Focus check
++  NativeTextInputReply reply;
++  return QueryNativeTextInput(request, reply);
++}
+ 
+-  if (!DispatchKeyPressEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace, 0, status)) {
+-    return true;
++bool TextInputHandler::HandlePhysicalDeleteBackward() {
 +  KeyEventState* currentKeyEvent = CurrentKeyEvent();
 +  if (!currentKeyEvent) {
 +    return false;
-+  }
-+  if (!aHasIMEBuffer && !aHasKoreanComposition && !HasMarkedText()) {
+   }
+-  if (Destroyed() || status == nsEventStatus_eConsumeNoDefault) {
++  if (!HasMarkedText()) {
 +    HandleCommand(Command::DeleteCharBackward);
-+    return true;
-+  }
-+
++    SynchronizeTextInputState();
+     return true;
+   }
+ 
+-  // TODO: Focus check
+-
+-  DispatchKeyUpEvent(NS_VK_BACK, KEY_NAME_INDEX_Backspace, 0, status);
+-
+-  return true;
 +  if (!PrepareCurrentKeyForIME()) {
 +    return true;
 +  }
 +  return false;
-+}
-+
+ }
+ 
  static uint32_t ComputeKeyModifiers(uint32_t aCharCode) {
-   if (aCharCode >= 'A' && aCharCode <= 'Z') {
-     return MODIFIER_SHIFT;
-@@ -233,6 +937,10 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
-   return true;
+@@ -136,7 +834,8 @@ static uint32_t ComputeKeyModifiers(uint32_t aCharCode) {
+ }
+ 
+ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+-                         KeyNameIndex aKeyNameIndex, char16_t aCharCode) {
++                         KeyNameIndex aKeyNameIndex, char16_t aCharCode,
++                         Modifiers aModifiers) {
+   aEvent.mKeyCode = aKeyCode;
+   aEvent.mIsRepeat = false;
+   aEvent.mKeyNameIndex = aKeyNameIndex;
+@@ -146,7 +845,7 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+   if (aEvent.mKeyNameIndex == KEY_NAME_INDEX_USE_STRING) {
+     aEvent.mKeyValue = aCharCode;
+   }
+-  aEvent.mModifiers = ComputeKeyModifiers(aCharCode);
++  aEvent.mModifiers = aModifiers;
+   aEvent.mLocation = eKeyLocationStandard;
+   aEvent.mTimeStamp = TimeStamp::Now();
+ }
+@@ -154,12 +853,13 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+ bool TextInputHandler::DispatchKeyDownEvent(uint32_t aKeyCode,
+                                             KeyNameIndex aKeyNameIndex,
+                                             char16_t aCharCode,
++                                            Modifiers aModifiers,
+                                             nsEventStatus& aStatus) {
+   MOZ_ASSERT(aKeyCode);
+   MOZ_ASSERT(mWidget);
+ 
+   WidgetKeyboardEvent keydownEvent(true, eKeyDown, mWidget);
+-  InitKeyEvent(keydownEvent, aKeyCode, aKeyNameIndex, aCharCode);
++  InitKeyEvent(keydownEvent, aKeyCode, aKeyNameIndex, aCharCode, aModifiers);
+   nsresult rv = mDispatcher->BeginNativeInputTransaction();
+   if (NS_FAILED(rv)) {
+     NS_WARNING("BeginNativeInputTransaction is failed");
+@@ -171,12 +871,13 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+ bool TextInputHandler::DispatchKeyUpEvent(uint32_t aKeyCode,
+                                           KeyNameIndex aKeyNameIndex,
+                                           char16_t aCharCode,
++                                          Modifiers aModifiers,
+                                           nsEventStatus& aStatus) {
+   MOZ_ASSERT(aKeyCode);
+   MOZ_ASSERT(mWidget);
+ 
+   WidgetKeyboardEvent keyupEvent(true, eKeyUp, mWidget);
+-  InitKeyEvent(keyupEvent, aKeyCode, aKeyNameIndex, aCharCode);
++  InitKeyEvent(keyupEvent, aKeyCode, aKeyNameIndex, aCharCode, aModifiers);
+   nsresult rv = mDispatcher->BeginNativeInputTransaction();
+   if (NS_FAILED(rv)) {
+     NS_WARNING("BeginNativeInputTransaction is failed");
+@@ -188,12 +889,13 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+ bool TextInputHandler::DispatchKeyPressEvent(uint32_t aKeyCode,
+                                              KeyNameIndex aKeyNameIndex,
+                                              char16_t aCharCode,
++                                             Modifiers aModifiers,
+                                              nsEventStatus& aStatus) {
+   MOZ_ASSERT(aKeyCode);
+   MOZ_ASSERT(mWidget);
+ 
+   WidgetKeyboardEvent keypressEvent(true, eKeyPress, mWidget);
+-  InitKeyEvent(keypressEvent, aKeyCode, aKeyNameIndex, aCharCode);
++  InitKeyEvent(keypressEvent, aKeyCode, aKeyNameIndex, aCharCode, aModifiers);
+   nsresult rv = mDispatcher->BeginNativeInputTransaction();
+   if (NS_FAILED(rv)) {
+     NS_WARNING("BeginNativeInputTransaction is failed");
+@@ -205,34 +907,58 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+ bool TextInputHandler::EmulateKeyboardEvent(uint32_t aKeyCode,
+                                             KeyNameIndex aKeyNameIndex,
+                                             char16_t aCharCode) {
+-  MOZ_ASSERT(aCharCode);
++  MOZ_ASSERT(aKeyCode);
+ 
+   MOZ_LOG(gIMELog, LogLevel::Info,
+           ("%p TextInputHandler::EmulateKeyboardEvent(aKeyCode=%x, "
+            "aKeyNameIndex=%x, aCharCode=%x)",
+            this, aKeyCode, aKeyNameIndex, aCharCode));
+ 
++  Modifiers modifiers =
++      mKeyboardSupport->CurrentModifiers() | ComputeKeyModifiers(aCharCode);
++  if (aKeyNameIndex == KEY_NAME_INDEX_Enter) {
++    Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
++    MOZ_RELEASE_ASSERT(keyboardClass);
++    UIKeyboardImpl* keyboard = [keyboardClass sharedInstance];
++
++    const bool manuallyShifted = [keyboard isShifted] &&
++                                 ![keyboard isAutoShifted] &&
++                                 ![keyboard isShiftLocked];
++    if (manuallyShifted) {
++      modifiers |= MODIFIER_SHIFT;
++    }
++  }
++
+   nsEventStatus status = nsEventStatus_eIgnore;
+-  if (!DispatchKeyDownEvent(aKeyCode, aKeyNameIndex, aCharCode, status)) {
+-    return true;
++  if (!DispatchKeyDownEvent(aKeyCode, aKeyNameIndex, aCharCode, modifiers,
++                            status)) {
++    return false;
+   }
+-  if (Destroyed() || status == nsEventStatus_eConsumeNoDefault) {
+-    return true;
++  if (Destroyed()) {
++    return false;
+   }
+   // TODO: Focus check
+ 
+-  if (!DispatchKeyPressEvent(aKeyCode, aKeyNameIndex, aCharCode, status)) {
+-    return true;
++  bool succeeded = true;
++  if (status != nsEventStatus_eConsumeNoDefault) {
++    succeeded = DispatchKeyPressEvent(aKeyCode, aKeyNameIndex, aCharCode,
++                                      modifiers, status);
+   }
+-  if (Destroyed() || status == nsEventStatus_eConsumeNoDefault) {
+-    return true;
++  if (Destroyed()) {
++    return false;
+   }
+   // TODO: Focus check
+ 
+-  DispatchKeyUpEvent(aKeyCode, aKeyNameIndex, aCharCode, status);
+-  return true;
++  status = nsEventStatus_eIgnore;
++  return DispatchKeyUpEvent(aKeyCode, aKeyNameIndex, aCharCode, modifiers,
++                            status) &&
++         succeeded && !Destroyed();
  }
  
 -void TextInputHandler::OnDestroyed() { mWidget = nullptr; }

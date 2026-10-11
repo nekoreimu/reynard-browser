@@ -1,8 +1,16 @@
 diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
-index 81398b5c1312..8dd2f3d172d7 100644
+index 81398b5c1312..6c9edb20c07f 100644
 --- a/dom/ipc/BrowserChild.h
 +++ b/dom/ipc/BrowserChild.h
-@@ -274,7 +274,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -10,6 +10,7 @@
+ #include "mozilla/DOMEventTargetHelper.h"
+ #include "mozilla/EventDispatcher.h"
+ #include "mozilla/EventForwards.h"
++#include "mozilla/NativeTextInput.h"
+ #include "mozilla/dom/CoalescedMouseData.h"
+ #include "mozilla/dom/CoalescedTouchData.h"
+ #include "mozilla/dom/CoalescedWheelData.h"
+@@ -274,7 +275,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
  
    MOZ_CAN_RUN_SCRIPT_BOUNDARY
    mozilla::ipc::IPCResult RecvDynamicToolbarMaxHeightChanged(
@@ -12,7 +20,65 @@ index 81398b5c1312..8dd2f3d172d7 100644
  
    mozilla::ipc::IPCResult RecvDynamicToolbarOffsetChanged(
        const mozilla::ScreenIntCoord& aOffset);
-@@ -448,7 +449,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -342,6 +344,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   mozilla::ipc::IPCResult RecvNormalPriorityRealKeyEvent(
+       const mozilla::WidgetKeyboardEvent& aEvent, const nsID& aUUID);
+ 
++  mozilla::ipc::IPCResult RecvNativeKeyEvent(
++      const mozilla::WidgetKeyboardEvent& aEvent, const nsID& aUUID);
++
+   mozilla::ipc::IPCResult RecvMouseWheelEvent(
+       const mozilla::WidgetWheelEvent& aEvent, const ScrollableLayerGuid& aGuid,
+       const uint64_t& aInputBlockId);
+@@ -391,18 +396,37 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   mozilla::ipc::IPCResult RecvNormalPriorityCompositionEvent(
+       const mozilla::WidgetCompositionEvent& aEvent);
+ 
++  mozilla::ipc::IPCResult RecvNativeCompositionEvent(
++      const mozilla::WidgetCompositionEvent& aEvent);
++
+   mozilla::ipc::IPCResult RecvSelectionEvent(
+       const mozilla::WidgetSelectionEvent& aEvent);
+ 
++  mozilla::ipc::IPCResult RecvNativeSelectionEvent(
++      const mozilla::WidgetSelectionEvent& aEvent, bool* aSucceeded);
++
+   mozilla::ipc::IPCResult RecvNormalPrioritySelectionEvent(
+       const mozilla::WidgetSelectionEvent& aEvent);
+ 
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY mozilla::ipc::IPCResult RecvQueryNativeTextInput(
++      const mozilla::NativeTextInputRequest& aRequest,
++      mozilla::NativeTextInputReply* aReply);
++
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY mozilla::ipc::IPCResult RecvStartNativeTextDrag(
++      const LayoutDeviceIntPoint& aPoint,
++      StartNativeTextDragResolver&& aResolve);
++
++  void NotifyNativeTextInputPositionChanged();
++
+   mozilla::ipc::IPCResult RecvSimpleContentCommandEvent(
+       const mozilla::EventMessage& aMessage);
+ 
+   mozilla::ipc::IPCResult RecvNormalPrioritySimpleContentCommandEvent(
+       const mozilla::EventMessage& aMessage);
+ 
++  mozilla::ipc::IPCResult RecvNativeSimpleContentCommandEvent(
++      const mozilla::EventMessage& aMessage);
++
+   mozilla::ipc::IPCResult RecvInsertText(const nsAString& aStringToInsert);
+ 
+   mozilla::ipc::IPCResult RecvUpdateRemoteStyle(
+@@ -411,6 +435,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   mozilla::ipc::IPCResult RecvNormalPriorityInsertText(
+       const nsAString& aStringToInsert);
+ 
++  mozilla::ipc::IPCResult RecvNativeInsertText(
++      const nsAString& aStringToInsert);
++
+   mozilla::ipc::IPCResult RecvReplaceText(const nsString& aReplaceSrcString,
+                                           const nsString& aStringToInsert,
+                                           uint32_t aOffset,
+@@ -448,7 +475,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
  
    const EffectsInfo& GetEffectsInfo() const { return mEffectsInfo; }
  
@@ -21,7 +87,7 @@ index 81398b5c1312..8dd2f3d172d7 100644
  
    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual mozilla::ipc::IPCResult RecvUpdateEffects(
        const EffectsInfo& aEffects);
-@@ -553,6 +554,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -553,6 +580,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
    ScreenIntCoord GetDynamicToolbarMaxHeight() const {
      return mDynamicToolbarMaxHeight;
    };
@@ -31,7 +97,7 @@ index 81398b5c1312..8dd2f3d172d7 100644
    mozilla::ScreenIntCoord GetKeyboardHeight() const { return mKeyboardHeight; }
  
    bool InAndroidPipMode() const { return mInAndroidPipMode; }
-@@ -871,6 +875,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -871,6 +901,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
    // NOTE: This value is valuable only for the top level browser.
    LayoutDeviceIntPoint mChromeOffset;
    ScreenIntCoord mDynamicToolbarMaxHeight;

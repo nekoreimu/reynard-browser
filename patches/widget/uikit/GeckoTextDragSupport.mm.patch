@@ -1,0 +1,574 @@
+diff --git a/widget/uikit/GeckoTextDragSupport.mm b/widget/uikit/GeckoTextDragSupport.mm
+new file mode 100644
+index 000000000000..1294282d8830
+--- /dev/null
++++ b/widget/uikit/GeckoTextDragSupport.mm
+@@ -0,0 +1,568 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import <UIKit/UIKit.h>
++
++#include "GeckoEditableSupport.h"
++#include "nsDragService.h"
++#include "nsWindow.h"
++
++#include "mozilla/MacStringHelpers.h"
++#include "mozilla/MouseEvents.h"
++#include "mozilla/dom/BrowserParent.h"
++#include "mozilla/dom/DataTransfer.h"
++#include "nsArrayUtils.h"
++#include "nsComponentManagerUtils.h"
++#include "nsIMutableArray.h"
++#include "nsISupportsPrimitives.h"
++#include "nsITransferable.h"
++#include "nsServiceManagerUtils.h"
++
++using namespace mozilla;
++
++@interface ChildView : UIView <UITextInput> {
++ @public
++  nsWindow* mGeckoChild;
++  BOOL mWaitingForPaint;
++  GeckoEditableState mEditable;
++}
++@end
++
++@interface ChildView (Shared)
++- (BOOL)isEditable;
++- (void)refreshSelectionUI;
++- (void)updateSelectionActivation;
++- (void)updateEditMenu;
++- (void)updateTextInteractions;
++@end
++
++@interface ChildView (TextDrag) <UIDragInteractionDelegate,
++                                 UIDropInteractionDelegate>
++- (void)setupTextDragInteractions;
++- (void)teardownTextDragInteractions;
++- (BOOL)prepareTextDragItems:(nsIArray*)aTransferables
++                     preview:(UIImage*)aPreview;
++- (void)finishTextDrag;
++- (void)dispatchTextDragEvent:(EventMessage)aMessage
++                      session:(id<UIDropSession>)aSession;
++@end
++
++@interface ChildViewTextDragContext : NSObject {
++ @public
++  RefPtr<nsDragSession> mSession;
++}
++@end
++
++@implementation ChildViewTextDragContext
++@end
++
++static already_AddRefed<nsDragSession> CurrentTextDragSession(nsWindow* aWidget,
++                                                              bool aCreate) {
++  if (!aWidget) {
++    return nullptr;
++  }
++
++  nsCOMPtr<nsIDragService> service =
++      do_GetService("@mozilla.org/widget/dragservice;1");
++  if (!service) {
++    return nullptr;
++  }
++
++  nsIDragSession* session = aCreate ? service->StartDragSession(aWidget)
++                                    : service->GetCurrentSession(aWidget);
++  RefPtr<nsDragSession> result = static_cast<nsDragSession*>(session);
++  return result.forget();
++}
++
++static NSString* TextDragString(nsITransferable* aItem, const char* aFlavor) {
++  nsCOMPtr<nsISupports> data;
++  if (NS_FAILED(aItem->GetTransferData(aFlavor, getter_AddRefs(data)))) {
++    return nil;
++  }
++
++  nsCOMPtr<nsISupportsString> string = do_QueryInterface(data);
++  if (!string) {
++    return nil;
++  }
++
++  nsAutoString value;
++  string->GetData(value);
++  return XPCOMStringToNSString(value);
++}
++
++static void SetTextDragString(nsITransferable* aItem, const char* aFlavor,
++                              NSString* aText) {
++  if (!aText) {
++    return;
++  }
++
++  nsCOMPtr<nsISupportsString> string =
++      do_CreateInstance("@mozilla.org/supports-string;1");
++  nsAutoString value;
++  CopyNSStringToXPCOMString(aText, value);
++  string->SetData(value);
++  aItem->SetTransferData(aFlavor, string);
++}
++
++@implementation ChildView (TextDrag)
++
++- (void)setupTextDragInteractions {
++  mEditable.mTextDragInteraction =
++      [[UIDragInteraction alloc] initWithDelegate:self];
++  [self addInteraction:mEditable.mTextDragInteraction];
++
++  mEditable.mTextDropInteraction =
++      [[UIDropInteraction alloc] initWithDelegate:self];
++  [self addInteraction:mEditable.mTextDropInteraction];
++}
++
++- (void)teardownTextDragInteractions {
++  if (!mEditable.mTextDragInteraction) {
++    return;
++  }
++
++  [self finishTextDrag];
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (mEditable.mTextDropSession && session) {
++    session->EndDragSession(false, 0);
++  }
++
++  [self removeInteraction:mEditable.mTextDragInteraction];
++  [self removeInteraction:mEditable.mTextDropInteraction];
++  [mEditable.mTextDragInteraction release];
++  [mEditable.mTextDropInteraction release];
++  [mEditable.mTextDropSession release];
++  mEditable.mTextDragInteraction = nil;
++  mEditable.mTextDropInteraction = nil;
++  mEditable.mTextDropSession = nil;
++}
++
++- (void)_dragInteraction:(UIDragInteraction*)aInteraction
++       prepareForSession:(id<UIDragSession>)aSession
++              completion:(dispatch_block_t)aCompletion {
++  if (![self isEditable] || self.secureTextEntry) {
++    aCompletion();
++    return;
++  }
++
++  if (mEditable.mTextDragSession || mEditable.mTextDropSession) {
++    aCompletion();
++    return;
++  }
++
++  UITextRange* selection = self.selectedTextRange;
++  if (!selection || selection.empty) {
++    aCompletion();
++    return;
++  }
++
++  CGPoint point = [aSession locationInView:self];
++  BOOL insideSelection = NO;
++  for (UITextSelectionRect* rect in [self selectionRectsForRange:selection]) {
++    insideSelection |= CGRectContainsPoint(rect.rect, point);
++  }
++
++  RefPtr<dom::BrowserParent> browser = dom::BrowserParent::GetFocused();
++  if (!insideSelection || !browser) {
++    aCompletion();
++    return;
++  }
++
++  mEditable.mTextDragSession = [aSession retain];
++
++  // Set the drag source in the parent before the child sends its data.
++  RefPtr<nsWindow> widget = mGeckoChild;
++  WidgetMouseEvent event(true, eMouseTouchDrag, widget,
++                         WidgetMouseEvent::eReal);
++  event.mRefPoint = UIKitPointsToDevPixels(point, self.contentScaleFactor);
++  event.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
++  event.mButton = MouseButton::ePrimary;
++  event.mButtons = MouseButtonsFlag::ePrimaryFlag;
++  widget->DispatchInputEvent(&event);
++  const auto childPoint = browser->TransformParentToChild(
++      UIKitPointsToDevPixels(point, self.contentScaleFactor));
++
++  dispatch_block_t completion = [aCompletion copy];
++  [self retain];
++  auto completePreparation = [self, completion](bool aStarted) {
++    if (!aStarted) {
++      [self finishTextDrag];
++    }
++    completion();
++    [completion release];
++    [self release];
++  };
++  browser->SendStartNativeTextDrag(
++      childPoint, completePreparation,
++      [completePreparation](ipc::ResponseRejectReason) {
++        completePreparation(false);
++      });
++}
++
++- (BOOL)prepareTextDragItems:(nsIArray*)aTransferables
++                     preview:(UIImage*)aPreview {
++  if (!mEditable.mTextDragSession || ![self isEditable] ||
++      self.secureTextEntry) {
++    return NO;
++  }
++
++  NSMutableArray<UIDragItem*>* items = [NSMutableArray array];
++  uint32_t count = 0;
++  aTransferables->GetLength(&count);
++  for (uint32_t i = 0; i < count; ++i) {
++    nsCOMPtr<nsITransferable> transferable =
++        do_QueryElementAt(aTransferables, i);
++    NSString* text = TextDragString(transferable, kTextMime);
++    if (!text.length) {
++      continue;
++    }
++
++    NSItemProvider* provider =
++        [[[NSItemProvider alloc] initWithObject:text] autorelease];
++    NSString* html = TextDragString(transferable, kHTMLMime);
++    if (html.length) {
++      NSData* data = [html dataUsingEncoding:NSUTF8StringEncoding];
++      auto loadData = ^NSProgress*(void (^aCompletion)(NSData*, NSError*)) {
++        aCompletion(data, nil);
++        return nil;
++      };
++      [provider
++          registerDataRepresentationForTypeIdentifier:@"public.html"
++                                           visibility:
++                                               NSItemProviderRepresentationVisibilityAll
++                                          loadHandler:loadData];
++    }
++    [items addObject:[[[UIDragItem alloc] initWithItemProvider:provider]
++                         autorelease]];
++  }
++
++  mEditable.mTextDragItems = [items copy];
++  if (aPreview) {
++    CGRect bounds = CGRectNull;
++    for (UITextSelectionRect* rect in
++         [self selectionRectsForRange:self.selectedTextRange]) {
++      bounds = CGRectUnion(bounds, rect.rect);
++    }
++
++    if (!CGRectIsNull(bounds)) {
++      mEditable.mTextDragPreview = [[UIImageView alloc] initWithImage:aPreview];
++      mEditable.mTextDragPreview.frame = bounds;
++      [self addSubview:mEditable.mTextDragPreview];
++    }
++  }
++
++  return items.count != 0;
++}
++
++- (NSArray<UIDragItem*>*)dragInteraction:(UIDragInteraction*)aInteraction
++                itemsForBeginningSession:(id<UIDragSession>)aSession {
++  if (aSession != mEditable.mTextDragSession) {
++    return @[];
++  }
++
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (!session || !mEditable.mTextDragItems.count) {
++    [self finishTextDrag];
++    return @[];
++  }
++
++  ChildViewTextDragContext* context =
++      [[[ChildViewTextDragContext alloc] init] autorelease];
++  context->mSession = session;
++  aSession.localContext = context;
++  return mEditable.mTextDragItems;
++}
++
++- (UITargetedDragPreview*)dragInteraction:(UIDragInteraction*)aInteraction
++                    previewForLiftingItem:(UIDragItem*)aItem
++                                  session:(id<UIDragSession>)aSession {
++  if (!mEditable.mTextDragPreview) {
++    return nil;
++  }
++
++  UIDragPreviewParameters* parameters =
++      [[[UIDragPreviewParameters alloc] init] autorelease];
++  parameters.backgroundColor = UIColor.clearColor;
++  return [[[UITargetedDragPreview alloc] initWithView:mEditable.mTextDragPreview
++                                           parameters:parameters] autorelease];
++}
++
++- (BOOL)dragInteraction:(UIDragInteraction*)aInteraction
++    sessionAllowsMoveOperation:(id<UIDragSession>)aSession {
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  return session &&
++         (session->AllowedActions() & nsIDragService::DRAGDROP_ACTION_MOVE);
++}
++
++- (void)dragInteraction:(UIDragInteraction*)aInteraction
++    willAnimateLiftWithAnimator:(id<UIDragAnimating>)aAnimator
++                        session:(id<UIDragSession>)aSession {
++  [aAnimator addCompletion:^(UIViewAnimatingPosition aPosition) {
++    if (aPosition == UIViewAnimatingPositionStart) {
++      [self finishTextDrag];
++    } else {
++      mEditable.mTextDragPreview.hidden = YES;
++    }
++  }];
++
++  [self updateSelectionActivation];
++  [self updateEditMenu];
++}
++
++- (void)dragInteraction:(UIDragInteraction*)aInteraction
++                session:(id<UIDragSession>)aSession
++    didEndWithOperation:(UIDropOperation)aOperation {
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (session && mEditable.mTextDragSession == aSession) {
++    if (aOperation == UIDropOperationCancel) {
++      session->UserCancelled();
++    }
++
++    if (RefPtr<dom::DataTransfer> transfer = session->GetDataTransfer()) {
++      uint32_t action = nsIDragService::DRAGDROP_ACTION_NONE;
++      if (aOperation == UIDropOperationMove) {
++        action = nsIDragService::DRAGDROP_ACTION_MOVE;
++      } else if (aOperation == UIDropOperationCopy) {
++        action = nsIDragService::DRAGDROP_ACTION_COPY;
++      }
++      transfer->SetDropEffectInt(action);
++    }
++  }
++
++  if (!mEditable.mLoadingTextDrop) {
++    [self finishTextDrag];
++  }
++}
++
++- (void)finishTextDrag {
++  if (mEditable.mTextDragSession) {
++    RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++    if (session) {
++      session->SetDragEndPoint(
++          UIKitPointsToDevPixels(
++              [mEditable.mTextDragSession locationInView:self],
++              self.contentScaleFactor) +
++          mGeckoChild->WidgetToScreenOffset());
++      session->EndDragSession(true, 0);
++    }
++  }
++
++  [mEditable.mTextDragSession release];
++  [mEditable.mTextDragItems release];
++  [mEditable.mTextDragPreview removeFromSuperview];
++  [mEditable.mTextDragPreview release];
++  mEditable.mTextDragSession = nil;
++  mEditable.mTextDragItems = nil;
++  mEditable.mTextDragPreview = nil;
++
++  [self updateTextInteractions];
++  [self refreshSelectionUI];
++}
++
++- (BOOL)dropInteraction:(UIDropInteraction*)aInteraction
++       canHandleSession:(id<UIDropSession>)aSession {
++  return mGeckoChild && !mGeckoChild->Destroyed() &&
++         [aSession canLoadObjectsOfClass:NSString.class];
++}
++
++- (void)dropInteraction:(UIDropInteraction*)aInteraction
++        sessionDidEnter:(id<UIDropSession>)aSession {
++  [mEditable.mTextDropSession release];
++  mEditable.mTextDropSession = [aSession retain];
++  [self updateSelectionActivation];
++  [self updateEditMenu];
++
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, true);
++  if (!session) {
++    return;
++  }
++
++  if (!session->HasGeckoSource()) {
++    session->SetDragAction(nsIDragService::DRAGDROP_ACTION_COPY);
++    nsCOMPtr<nsIMutableArray> transferables =
++        do_CreateInstance(NS_ARRAY_CONTRACTID);
++    for (UIDragItem* item in aSession.items) {
++      nsCOMPtr<nsITransferable> transferable =
++          do_CreateInstance("@mozilla.org/widget/transferable;1");
++      transferable->Init(nullptr);
++      if ([item.itemProvider canLoadObjectOfClass:NSString.class]) {
++        SetTextDragString(transferable, kTextMime, @"");
++      }
++      if ([item.itemProvider
++              hasItemConformingToTypeIdentifier:@"public.html"]) {
++        SetTextDragString(transferable, kHTMLMime, @"");
++      }
++      transferables->AppendElement(transferable);
++    }
++    session->SetTransferables(transferables);
++  }
++
++  [self dispatchTextDragEvent:eDragEnter session:aSession];
++}
++
++- (void)dispatchTextDragEvent:(EventMessage)aMessage
++                      session:(id<UIDropSession>)aSession {
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return;
++  }
++
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (!session) {
++    return;
++  }
++
++  if (aMessage == eDragOver) {
++    session->FireDragEventAtSource(eDrag, 0);
++    session->SetCanDrop(false);
++    const bool localSource = [aSession.localDragSession.localContext
++        isKindOfClass:ChildViewTextDragContext.class];
++    session->SetDragAction(localSource && aSession.allowsMoveOperation
++                               ? nsIDragService::DRAGDROP_ACTION_MOVE
++                               : nsIDragService::DRAGDROP_ACTION_COPY);
++  }
++
++  WidgetDragEvent event(true, aMessage, mGeckoChild);
++  event.mOnlyEditableText = true;
++  event.mRefPoint = UIKitPointsToDevPixels([aSession locationInView:self],
++                                           self.contentScaleFactor);
++  event.mInputSource = dom::MouseEvent_Binding::MOZ_SOURCE_TOUCH;
++  RefPtr<nsWindow> widget = mGeckoChild;
++  widget->DispatchInputEvent(&event);
++}
++
++- (UIDropProposal*)dropInteraction:(UIDropInteraction*)aInteraction
++                  sessionDidUpdate:(id<UIDropSession>)aSession {
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  uint32_t action =
++      session ? session->DropAction() : nsIDragService::DRAGDROP_ACTION_NONE;
++  [self dispatchTextDragEvent:eDragOver session:aSession];
++
++  UIDropOperation operation = UIDropOperationCancel;
++  if (action & nsIDragService::DRAGDROP_ACTION_MOVE &&
++      aSession.allowsMoveOperation) {
++    operation = UIDropOperationMove;
++  } else if (action & nsIDragService::DRAGDROP_ACTION_COPY) {
++    operation = UIDropOperationCopy;
++  }
++
++  return [[[UIDropProposal alloc] initWithDropOperation:operation] autorelease];
++}
++
++- (void)dropInteraction:(UIDropInteraction*)aInteraction
++         sessionDidExit:(id<UIDropSession>)aSession {
++  [self dispatchTextDragEvent:eDragExit session:aSession];
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (session && !session->HasGeckoSource()) {
++    session->EndDragSession(false, 0);
++  }
++
++  [mEditable.mTextDropSession release];
++  mEditable.mTextDropSession = nil;
++  [self updateSelectionActivation];
++}
++
++- (void)dropInteraction:(UIDropInteraction*)aInteraction
++            performDrop:(id<UIDropSession>)aSession {
++  RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++  if (!session) {
++    return;
++  }
++
++  if ([aSession.localDragSession.localContext
++          isKindOfClass:ChildViewTextDragContext.class]) {
++    session->SetDragAction(session->DropAction());
++    [self dispatchTextDragEvent:eDrop session:aSession];
++    [self dispatchTextDragEvent:eDragExit session:aSession];
++    return;
++  }
++
++  mEditable.mLoadingTextDrop = YES;
++  CGPoint point = [aSession locationInView:self];
++  nsCOMPtr<nsIMutableArray> transferables =
++      do_CreateInstance(NS_ARRAY_CONTRACTID);
++  dispatch_group_t group = dispatch_group_create();
++  for (UIDragItem* item in aSession.items) {
++    NSItemProvider* provider = item.itemProvider;
++    if (![provider canLoadObjectOfClass:NSString.class]) {
++      continue;
++    }
++
++    nsCOMPtr<nsITransferable> transferable =
++        do_CreateInstance("@mozilla.org/widget/transferable;1");
++    transferable->Init(nullptr);
++    transferables->AppendElement(transferable);
++
++    dispatch_group_enter(group);
++    auto loadText = ^(id<NSItemProviderReading> aObject, NSError* aError) {
++      dispatch_async(dispatch_get_main_queue(), ^{
++        if ([(id)aObject isKindOfClass:NSString.class]) {
++          SetTextDragString(transferable, kTextMime, (NSString*)aObject);
++        }
++        dispatch_group_leave(group);
++      });
++    };
++    [provider loadObjectOfClass:NSString.class completionHandler:loadText];
++
++    if ([provider hasItemConformingToTypeIdentifier:@"public.html"]) {
++      dispatch_group_enter(group);
++      auto loadHTML = ^(NSData* aData, NSError* aError) {
++        dispatch_async(dispatch_get_main_queue(), ^{
++          if (aData) {
++            NSString* html = [[[NSString alloc]
++                initWithData:aData
++                    encoding:NSUTF8StringEncoding] autorelease];
++            SetTextDragString(transferable, kHTMLMime, html);
++          }
++          dispatch_group_leave(group);
++        });
++      };
++      [provider loadDataRepresentationForTypeIdentifier:@"public.html"
++                                      completionHandler:loadHTML];
++    }
++  }
++
++  dispatch_group_notify(group, dispatch_get_main_queue(), ^{
++    RefPtr<nsDragSession> current = CurrentTextDragSession(mGeckoChild, false);
++    if (mGeckoChild && !mGeckoChild->Destroyed() && current == session) {
++      session->SetTransferables(transferables);
++      session->SetDragAction(session->DropAction());
++
++      WidgetDragEvent event(true, eDrop, mGeckoChild);
++      event.mOnlyEditableText = true;
++      event.mRefPoint = UIKitPointsToDevPixels(point, self.contentScaleFactor);
++      RefPtr<nsWindow> widget = mGeckoChild;
++      widget->DispatchInputEvent(&event);
++
++      WidgetDragEvent exit(true, eDragExit, widget);
++      exit.mRefPoint = event.mRefPoint;
++      exit.mOnlyEditableText = true;
++      widget->DispatchInputEvent(&exit);
++      session->EndDragSession(false, 0);
++    }
++
++    mEditable.mLoadingTextDrop = NO;
++    [self refreshSelectionUI];
++  });
++  dispatch_release(group);
++}
++
++- (void)dropInteraction:(UIDropInteraction*)aInteraction
++          sessionDidEnd:(id<UIDropSession>)aSession {
++  if (!mEditable.mLoadingTextDrop) {
++    [self dispatchTextDragEvent:eDragExit session:aSession];
++    RefPtr<nsDragSession> session = CurrentTextDragSession(mGeckoChild, false);
++    if (session && !session->HasGeckoSource()) {
++      session->EndDragSession(false, 0);
++    }
++  }
++
++  [mEditable.mTextDropSession release];
++  mEditable.mTextDropSession = nil;
++  [self updateSelectionActivation];
++}
++
++@end

@@ -1,0 +1,12 @@
+diff --git a/editor/libeditor/EditorCommands.h b/editor/libeditor/EditorCommands.h
+index e2a75a9c410a..00c9155b14ae 100644
+--- a/editor/libeditor/EditorCommands.h
++++ b/editor/libeditor/EditorCommands.h
+@@ -107,6 +107,7 @@ class EditorCommand : public ControllerCommand {
+       case Command::DeleteWordForward:
+       case Command::DeleteToBeginningOfLine:
+       case Command::DeleteToEndOfLine:
++      case Command::DeleteToEndOfParagraph:
+         return EditorCommandParamType::None;
+       // InsertPlaintextCommand
+       case Command::InsertText:

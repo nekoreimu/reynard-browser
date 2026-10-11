@@ -1,0 +1,14 @@
+diff --git a/editor/libeditor/EditorCommands.cpp b/editor/libeditor/EditorCommands.cpp
+index d207fc1d146f..9ee83310bbe9 100644
+--- a/editor/libeditor/EditorCommands.cpp
++++ b/editor/libeditor/EditorCommands.cpp
+@@ -653,6 +653,9 @@ nsresult DeleteCommand::DoCommand(Command aCommand, EditorBase& aEditorBase,
+     case Command::DeleteToEndOfLine:
+       deleteDir = nsIEditor::eToEndOfLine;
+       break;
++    case Command::DeleteToEndOfParagraph:
++      deleteDir = nsIEditor::eToEndOfParagraph;
++      break;
+     default:
+       MOZ_CRASH("Unrecognized nsDeleteCommand");
+   }

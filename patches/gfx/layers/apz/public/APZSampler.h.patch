@@ -1,0 +1,21 @@
+diff --git a/gfx/layers/apz/public/APZSampler.h b/gfx/layers/apz/public/APZSampler.h
+index 1d9357d2c537..00eb340f5bd0 100644
+--- a/gfx/layers/apz/public/APZSampler.h
++++ b/gfx/layers/apz/public/APZSampler.h
+@@ -60,9 +60,15 @@ class APZSampler {
+                                  wr::Transaction* aTransaction);
+ 
+   void SetSampleTime(const SampleTime& aSampleTime);
+-  void SampleForWebRender(const Maybe<VsyncId>& aGeneratedFrameId,
++  void SampleForWebRender(const wr::WrWindowId& aWindowId,
++                          const Maybe<VsyncId>& aGeneratedFrameId,
+                           wr::TransactionWrapper& aTxn);
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  void SetNativeTextInputScrollers(
++      const nsTArray<ScrollableLayerGuid>& aScrollers);
++#endif
++
+   /**
+    * Similar to above GetCurrentAsyncTransform, but get the current transform
+    * with LayersId and ViewID.

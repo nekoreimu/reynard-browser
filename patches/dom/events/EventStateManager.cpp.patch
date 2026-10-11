@@ -1,0 +1,120 @@
+diff --git a/dom/events/EventStateManager.cpp b/dom/events/EventStateManager.cpp
+index 185901651805..879ea8e2a3c6 100644
+--- a/dom/events/EventStateManager.cpp
++++ b/dom/events/EventStateManager.cpp
+@@ -294,6 +294,23 @@ static bool HasNativeKeyBindings(nsIContent* aContent,
+   return !commands.IsEmpty();
+ }
+ 
++static bool IsEditableTextDropTarget(nsIContent* aContent) {
++  if (!aContent) {
++    return false;
++  }
++
++  nsIContent* control =
++      aContent->IsInNativeAnonymousSubtree()
++          ? aContent->GetClosestNativeAnonymousSubtreeRootParentOrHost()
++          : aContent;
++  if (const auto* textControl = TextControlElement::FromNode(control)) {
++    return textControl->IsSingleLineTextControlOrTextArea() &&
++           !textControl->IsDisabledOrReadOnly();
++  }
++
++  return aContent->IsEditable();
++}
++
+ LazyLogModule sMouseBoundaryLog("MouseBoundaryEvents");
+ LazyLogModule sPointerBoundaryLog("PointerBoundaryEvents");
+ 
+@@ -1308,6 +1325,14 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
+       break;
+     }
+     case eDrop: {
++      if (aEvent->AsDragEvent()->mOnlyEditableText &&
++          !IsTopLevelRemoteTarget(aTargetContent) &&
++          !IsEditableTextDropTarget(aTargetContent)) {
++        aEvent->PreventDefault();
++        aEvent->StopPropagation();
++        *aStatus = nsEventStatus_eConsumeNoDefault;
++        break;
++      }
+       if (aEvent->mFlags.mIsSynthesizedForTests && allowSynthesisForTests()) {
+         MOZ_ASSERT(aEvent->AsDragEvent());
+         aEvent->AsDragEvent()->InitDropEffectForTests();
+@@ -2778,6 +2803,33 @@ bool EventStateManager::IsEventOutsideDragThreshold(
+          Abs(distance.y) > sPixelThresholdY;
+ }
+ 
++void EventStateManager::StartNativeDragGesture(WidgetMouseEvent& aEvent,
++                                               nsIFrame* aTargetFrame) {
++  BeginTrackingDragGesture(mPresContext, aEvent, aTargetFrame);
++  ContinueNativeDragGesture();
++}
++
++void EventStateManager::ContinueNativeDragGesture() {
++  nsIFrame* frame = mGestureDownFrameOwner
++                        ? mGestureDownFrameOwner->GetPrimaryFrame()
++                        : nullptr;
++  if (!frame) {
++    return;
++  }
++
++  nsCOMPtr<nsIWidget> widget = frame->GetNearestWidget();
++  if (!widget) {
++    return;
++  }
++
++  WidgetMouseEvent event(true, eMouseMove, widget, WidgetMouseEvent::eReal);
++  event.mRefPoint = mGestureDownPoint - widget->WidgetToScreenOffset();
++  event.mInputSource = MouseEvent_Binding::MOZ_SOURCE_TOUCH;
++  RefPtr<nsPresContext> context = mPresContext;
++
++  GenerateDragGesture(context, event, true);
++}
++
+ //
+ // GenerateDragGesture
+ //
+@@ -2785,8 +2837,8 @@ bool EventStateManager::IsEventOutsideDragThreshold(
+ // position of the mouse in relation to the old one. If we've moved a sufficient
+ // amount from the mouse down, then fire off a drag gesture event.
+ void EventStateManager::GenerateDragGesture(
+-    nsPresContext* aPresContext,
+-    WidgetInputEvent& aMouseOrTouchOrPointerEvent) {
++    nsPresContext* aPresContext, WidgetInputEvent& aMouseOrTouchOrPointerEvent,
++    bool aIgnoreDragThreshold) {
+   NS_ASSERTION(aPresContext, "This shouldn't happen.");
+   MOZ_ASSERT_IF(aMouseOrTouchOrPointerEvent.AsMouseEvent(),
+                 aMouseOrTouchOrPointerEvent.AsMouseEvent()->IsReal());
+@@ -2836,7 +2888,8 @@ void EventStateManager::GenerateDragGesture(
+     return;
+   }
+ 
+-  if (!IsEventOutsideDragThreshold(aMouseOrTouchOrPointerEvent)) {
++  if (!aIgnoreDragThreshold &&
++      !IsEventOutsideDragThreshold(aMouseOrTouchOrPointerEvent)) {
+     // To keep the old behavior, flush layout even if we don't start dnd.
+     FlushLayout(aPresContext);
+     return;
+@@ -4668,6 +4721,21 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
+         // No one called preventDefault(), so handle drop only in chrome.
+         dragSession->SetOnlyChromeDrop(true);
+       }
++
++      if (dragEvent->mOnlyEditableText &&
++          !aEvent->HasBeenPostedToRemoteProcess()) {
++        nsIContent* target =
++            mCurrentTarget ? mCurrentTarget->GetContent() : nullptr;
++        if (!IsEditableTextDropTarget(target)) {
++          action = dropEffect = nsIDragService::DRAGDROP_ACTION_NONE;
++          dragSession->SetDragAction(action);
++          dragSession->SetCanDrop(false);
++          if (dataTransfer) {
++            dataTransfer->SetDropEffectInt(dropEffect);
++          }
++        }
++      }
++
+       if (auto* bc = BrowserChild::GetFrom(presContext->GetDocShell())) {
+         bc->SendUpdateDropEffect(action, dropEffect);
+       }
