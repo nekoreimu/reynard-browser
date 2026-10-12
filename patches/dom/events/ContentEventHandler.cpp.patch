@@ -1,5 +1,5 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index d11a218cd050..487e43795858 100644
+index d11a218cd050..1c3438a87b83 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
 @@ -6,43 +6,60 @@
@@ -63,7 +63,7 @@ index d11a218cd050..487e43795858 100644
  #include "nsTextFrame.h"
  
  // Work around conflicting define in rpcndr.h
-@@ -443,6 +460,1271 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
+@@ -443,6 +460,1302 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
    return rangeInRootElement;
  }
  
@@ -143,6 +143,7 @@ index d11a218cd050..487e43795858 100644
 +  auto* rootScroll = shell->GetRootScrollContainerFrame();
 +  const float resolution = shell->GetResolution();
 +  bool hasRoot = false;
++  AutoTArray<nsIFrame*, 4> stickyFrames;
 +
 +  auto append = [&](ScrollContainerFrame* aScroll, bool aFixed) {
 +    BrowserChild* browser = BrowserChild::GetFrom(aScroll->PresShell());
@@ -174,13 +175,42 @@ index d11a218cd050..487e43795858 100644
 +      reference.mOffset = aFixed ? callback : reference.mOffset + callback;
 +      hasRoot = true;
 +    }
++
++    while (!stickyFrames.IsEmpty()) {
++      nsIFrame* frame = stickyFrames.PopLastElement();
++      auto* sticky = StickyScrollContainer::GetForFrame(frame);
++      if (!sticky || sticky->ScrollContainer() != aScroll) {
++        continue;
++      }
++
++      nsRectAbsolute outer;
++      nsRectAbsolute inner;
++      sticky->GetScrollRanges(frame, &outer, &inner);
++      NativeTextInputStickyScrollRange range;
++      range.mOuter.SetBox(CSSPixel::FromAppUnits(outer.X()),
++                          CSSPixel::FromAppUnits(outer.Y()),
++                          CSSPixel::FromAppUnits(outer.XMost()),
++                          CSSPixel::FromAppUnits(outer.YMost()));
++      range.mInner.SetBox(CSSPixel::FromAppUnits(inner.X()),
++                          CSSPixel::FromAppUnits(inner.Y()),
++                          CSSPixel::FromAppUnits(inner.XMost()),
++                          CSSPixel::FromAppUnits(inner.YMost()));
++      reference.mStickyRanges.AppendElement(range);
++    }
++
 +    aReferences.AppendElement(reference);
 +  };
 +
-+  for (nsIFrame* frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(aFrame);
-+       frame; frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
-+    if (ScrollContainerFrame* scroll = do_QueryFrame(frame)) {
++  for (nsIFrame* frame = aFrame; frame;
++       frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
++    if (ScrollContainerFrame* scroll = do_QueryFrame(frame);
++        scroll && frame != aFrame) {
 +      append(scroll, false);
++    }
++
++    // The frame's sticky position belongs to its parent scroll container.
++    if (frame->StyleDisplay()->mPosition == StylePositionProperty::Sticky) {
++      stickyFrames.AppendElement(frame);
 +    }
 +  }
 +
@@ -773,7 +803,8 @@ index d11a218cd050..487e43795858 100644
 +              } else if (writingMode.IsVerticalRL()) {
 +                float localEdge = previous.mUntransformedRect.x;
 +                if (upright) {
-+                  localEdge = (previous.mRect.x - transform._31) / transform._11;
++                  localEdge =
++                      (previous.mRect.x - transform._31) / transform._11;
 +                }
 +                previous.mUntransformedRect.SetLeftEdge(localEdge);
 +                selectionRect.mUntransformedRect.SetRightEdge(localEdge);
@@ -1335,7 +1366,7 @@ index d11a218cd050..487e43795858 100644
  nsresult ContentEventHandler::InitCommon(EventMessage aEventMessage,
                                           SelectionType aSelectionType,
                                           bool aRequireFlush) {
-@@ -628,6 +1910,13 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -628,6 +1941,13 @@ nsresult ContentEventHandler::QueryContentRect(
  
    aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
        resultRect, presContext->AppUnitsPerDevPixel());
@@ -1349,7 +1380,7 @@ index d11a218cd050..487e43795858 100644
    // Returning empty rect may cause native IME confused, let's make sure to
    // return non-empty rect.
    EnsureNonEmptyRect(aEvent->mReply->mRect);
-@@ -635,6 +1924,32 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -635,6 +1955,32 @@ nsresult ContentEventHandler::QueryContentRect(
    return NS_OK;
  }
  
@@ -1382,7 +1413,7 @@ index d11a218cd050..487e43795858 100644
  // Editor places a padding <br> element under its root content if the editor
  // doesn't have any text. This happens even for single line editors.
  // When we get text content and when we change the selection,
-@@ -837,6 +2152,8 @@ nsresult ContentEventHandler::GenerateFlatTextContent(
+@@ -837,6 +2183,8 @@ nsresult ContentEventHandler::GenerateFlatTextContent(
        }
      } else if (ShouldBreakLineBefore(*node->AsContent(), mRootElement)) {
        aString.Append(char16_t('\n'));
@@ -1391,7 +1422,7 @@ index d11a218cd050..487e43795858 100644
      }
    }
    return NS_OK;
-@@ -1025,6 +2342,11 @@ nsresult ContentEventHandler::GenerateFlatFontRanges(
+@@ -1025,6 +2373,11 @@ nsresult ContentEventHandler::GenerateFlatFontRanges(
          }
        }
        baseOffset += kBRLength;
@@ -1403,7 +1434,7 @@ index d11a218cd050..487e43795858 100644
      }
    }
  
-@@ -1144,10 +2466,13 @@ ContentEventHandler::ConvertFlatTextOffsetToDOMRangeBase(
+@@ -1144,10 +2497,13 @@ ContentEventHandler::ConvertFlatTextOffsetToDOMRangeBase(
        result.mLastTextNode = contentAsText;
      }
  
@@ -1421,7 +1452,7 @@ index d11a218cd050..487e43795858 100644
      if (!textLength) {
        continue;
      }
-@@ -2525,6 +3850,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
+@@ -2525,6 +3881,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
    }
    DOMRangeAndAdjustedOffsetInFlattenedText domRangeAndAdjustedOffset =
        domRangeAndAdjustedOffsetOrError.unwrap();
@@ -1429,7 +1460,7 @@ index d11a218cd050..487e43795858 100644
    nsString string;
    if (NS_WARN_IF(NS_FAILED(
            GenerateFlatTextContent(domRangeAndAdjustedOffset.mRange, string)))) {
-@@ -2847,7 +4173,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
+@@ -2847,7 +4204,7 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
  }
  
  nsresult ContentEventHandler::OnQueryEditorRect(
@@ -1438,7 +1469,7 @@ index d11a218cd050..487e43795858 100644
    nsresult rv = Init(aEvent);
    if (NS_FAILED(rv)) {
      return rv;
-@@ -2862,9 +4188,72 @@ nsresult ContentEventHandler::OnQueryEditorRect(
+@@ -2862,9 +4219,72 @@ nsresult ContentEventHandler::OnQueryEditorRect(
      }
    }
  
@@ -1452,7 +1483,7 @@ index d11a218cd050..487e43795858 100644
 +          GetFocusedTextControlFrameForRoot(mRootElement)) {
 +    editorContent = control->GetContent();
 +    editorFrame = control->GetScrollTargetFrame();
-+  }
+   }
 +#endif
 +  rv = QueryContentRect(editorContent, aEvent);
 +  NS_ENSURE_SUCCESS(rv, rv);
@@ -1508,12 +1539,12 @@ index d11a218cd050..487e43795858 100644
 +
 +    // Preserve an empty clip when the editor is entirely out of view.
 +    aEvent->mReply->mRect = aEvent->mReply->mRect.Intersect(clipRect);
-   }
++  }
 +#endif
  
    MOZ_ASSERT(aEvent->Succeeded());
    return NS_OK;
-@@ -3305,15 +4694,14 @@ Result<uint32_t, nsresult> ContentEventHandler::GetFlatTextLengthInRange(
+@@ -3305,15 +4725,14 @@ Result<uint32_t, nsresult> ContentEventHandler::GetFlatTextLengthInRange(
        } else {
          length += GetTextLength(*textNode);
        }
@@ -1533,7 +1564,7 @@ index d11a218cd050..487e43795858 100644
        if (content == endPosition.GetContainer() &&
            endPosition.IsBeforeOpenTag()) {
          continue;
-@@ -3407,8 +4795,8 @@ nsresult ContentEventHandler::AdjustCollapsedRangeMaybeIntoTextNode(
+@@ -3407,8 +4826,8 @@ nsresult ContentEventHandler::AdjustCollapsedRangeMaybeIntoTextNode(
    return NS_OK;
  }
  
@@ -1544,7 +1575,7 @@ index d11a218cd050..487e43795858 100644
    NS_ASSERTION(aFrame, "aFrame must not be null");
  
    nsPresContext* thisPC = aFrame->PresContext();
-@@ -3416,12 +4804,76 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+@@ -3416,12 +4835,76 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }
@@ -1623,7 +1654,7 @@ index d11a218cd050..487e43795858 100644
  
    // TransformFrameRectToAncestor returned the rect in the ancestor's appUnits,
    // but we want it in aFrame's units (in case of different full-zoom factors),
-@@ -3481,7 +4933,8 @@ static void AdjustRangeForSelection(const Element* aRootElement,
+@@ -3481,7 +4964,8 @@ static void AdjustRangeForSelection(const Element* aRootElement,
    }
  }
  
@@ -1633,7 +1664,7 @@ index d11a218cd050..487e43795858 100644
    aEvent->mSucceeded = false;
  
    // Get selection to manipulate
-@@ -3533,6 +4986,19 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
+@@ -3533,6 +5017,19 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
      }
    }
  
@@ -1653,7 +1684,7 @@ index d11a218cd050..487e43795858 100644
    if (aEvent->mReversed) {
      nsCOMPtr<nsINode> startNodeStrong(startNode);
      nsCOMPtr<nsINode> endNodeStrong(endNode);
-@@ -3558,7 +5024,8 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
+@@ -3558,7 +5055,8 @@ nsresult ContentEventHandler::OnSelectionEvent(WidgetSelectionEvent* aEvent) {
    // `ContentEventHandler` is a `MOZ_STACK_CLASS`, so `mSelection` is known to
    // be alive.
    MOZ_KnownLive(mSelection)

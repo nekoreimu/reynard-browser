@@ -111,6 +111,14 @@ extension BrowserViewController: TabManagerDelegate {
         requestContentKeyboardFocus(for: session)
     }
     
+    func tabManager(_ tabManager: TabManager, didRequestFindInPage query: String, in session: GeckoSession) {
+        guard tabManager.selectedTab?.session === session else {
+            return
+        }
+        
+        browserChrome.showActionBar(.findInPage(query: query), animated: true)
+    }
+    
     func tabManager(_ tabManager: TabManager, captureHistoryThumbnailForTabAt index: Int, mode: TabMode, url: String) {
         captureHistoryThumbnail(forTabAt: index, mode: mode, url: url)
     }

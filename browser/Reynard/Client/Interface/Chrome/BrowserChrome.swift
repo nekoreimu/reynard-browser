@@ -312,7 +312,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         pageZoomDismissView.isHidden = true
         guard !actionBar.isHidden else { return }
         if #available(iOS 26.0, *), animated,
-           actionBar.item == .pageZoom || actionBar.item == .findInPage {
+           actionBar.item == .pageZoom || actionBar.isShowingFindInPage {
             guard modernActionBarDismissalID == nil else { return }
             
             let dismissalID = UUID()

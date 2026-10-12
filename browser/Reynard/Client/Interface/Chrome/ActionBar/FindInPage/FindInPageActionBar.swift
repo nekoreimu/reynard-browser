@@ -221,12 +221,18 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         doneToolbar?.alpha = hidden ? 0 : 1
     }
     
-    func prepareForPresentation() {
+    func prepareForPresentation(query: String?) {
         requestID += 1
         onClear?()
-        searchField.text = nil
-        setResultText(nil)
-        updateNavigationButtons()
+        searchField.text = query
+        
+        if let query, !query.isEmpty {
+            searchTextChanged()
+        } else {
+            setResultText(nil)
+            updateNavigationButtons()
+        }
+        
         DispatchQueue.main.async { [weak self] in
             self?.searchField.becomeFirstResponder()
         }

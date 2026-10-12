@@ -79,16 +79,16 @@ struct UserAgentPolicy {
         
         // It's sad to have the Android UA, because Gecko + iOS
         // is a super weird combination that websites don't expect!
-        let androidMobileUserAgent = "Mozilla/5.0 (Android 15; Mobile; rv:\(geckoMajorVersion).0) Gecko/\(geckoMajorVersion).0 Firefox/\(geckoMajorVersion).0"
-        let androidDesktopUserAgent = "Mozilla/5.0 (X11; Linux x86_64; rv:\(geckoMajorVersion).0) Gecko/20100101 Firefox/\(geckoMajorVersion).0"
-        let androidMobilePlatform = "Linux armv81"
-        let androidDesktopPlatform = "Linux x86_64"
-        let androidMobileAppVersion = "5.0 (Android 15)"
-        let androidDesktopAppVersion = "5.0 (X11)"
+        let mobileUserAgent = "Mozilla/5.0 (Android 15; Mobile; rv:\(geckoMajorVersion).0) Gecko/\(geckoMajorVersion).0 Firefox/\(geckoMajorVersion).0"
+        let desktopUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:\(geckoMajorVersion).0) Gecko/20100101 Firefox/\(geckoMajorVersion).0"
+        let mobilePlatform = "Linux armv81"
+        let desktopPlatform = "Intel Mac OS X 10.15"
+        let mobileAppVersion = "5.0 (Android 15)"
+        let desktopAppVersion = "5.0 (Macintosh)"
         
-        let userAgent = prefersDesktopMode ? androidDesktopUserAgent : androidMobileUserAgent
-        let platform = prefersDesktopMode ? androidDesktopPlatform : androidMobilePlatform
-        let appVersion = prefersDesktopMode ? androidDesktopAppVersion : androidMobileAppVersion
+        let userAgent = prefersDesktopMode ? desktopUserAgent : mobileUserAgent
+        let platform = prefersDesktopMode ? desktopPlatform : mobilePlatform
+        let appVersion = prefersDesktopMode ? desktopAppVersion : mobileAppVersion
         return UserAgentConfiguration(
             override: userAgent,
             platformOverride: platform,

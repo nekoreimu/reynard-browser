@@ -498,7 +498,9 @@ final class AddressBar: UIView {
     
     func focusForHardwareKeyboard() {
         usesAutomaticFocusLayout = true
-        if !textField.becomeFirstResponder() {
+        if textField.becomeFirstResponder() {
+            setDismissButtonVisible(false, animated: true)
+        } else {
             usesAutomaticFocusLayout = false
         }
     }

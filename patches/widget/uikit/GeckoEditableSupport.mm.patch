@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..f1da48a3a27a
+index 000000000000..0daf073decea
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4189 @@
+@@ -0,0 +1,4213 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -854,7 +854,26 @@ index 000000000000..f1da48a3a27a
 +    const CSSPoint offset = reference.mFixed
 +                                ? update->mVisualOffset - update->mLayoutOffset
 +                                : update->mVisualOffset;
-+    const CSSPoint delta = offset - reference.mOffset;
++    CSSPoint delta = offset - reference.mOffset;
++    CSSPoint stickyOffset;
++    auto movement = [](float aDelta, float aOuterStart, float aInnerStart,
++                       float aInnerEnd, float aOuterEnd) {
++      return std::clamp(aDelta, aInnerEnd, aOuterEnd) -
++             std::clamp(0.0f, aInnerEnd, aOuterEnd) +
++             std::clamp(aDelta, aOuterStart, aInnerStart) -
++             std::clamp(0.0f, aOuterStart, aInnerStart);
++    };
++
++    for (const auto& range : reference.mStickyRanges) {
++      const CSSPoint remaining = delta - stickyOffset;
++      stickyOffset += CSSPoint(
++          movement(float(remaining.x), range.mOuter.X(), range.mInner.X(),
++                   range.mInner.XMost(), range.mOuter.XMost()),
++          movement(float(remaining.y), range.mOuter.Y(), range.mInner.Y(),
++                   range.mInner.YMost(), range.mOuter.YMost()));
++    }
++    delta -= stickyOffset;
++
 +    translation -=
 +        reference.mXAxis * float(delta.x) + reference.mYAxis * float(delta.y);
 +
@@ -1566,8 +1585,9 @@ index 000000000000..f1da48a3a27a
 +    // UIKit hides an open menu before this callback.
 +    id<GeckoTextEditMenuAssistant> menuAssistant =
 +        [mAssistant _editMenuAssistant];
-+    if ([menuAssistant respondsToSelector:
-+                           @selector(_editMenuIsVisibleOrDismissedRecently)] &&
++    if ([menuAssistant
++            respondsToSelector:@selector(
++                                   _editMenuIsVisibleOrDismissedRecently)] &&
 +        [menuAssistant _editMenuIsVisibleOrDismissedRecently]) {
 +      return YES;
 +    }
@@ -2130,6 +2150,10 @@ index 000000000000..f1da48a3a27a
 +  }
 +
 +  id<GeckoTextInteractionAssistant> assistant = [self interactionAssistant];
++  if (![assistant respondsToSelector:@selector(currentDraggedHandle)]) {
++    return NO;
++  }
++
 +  return [assistant currentDraggedHandle] != 0;
 +}
 +

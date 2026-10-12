@@ -40,7 +40,13 @@ final class TabManagerImplementation: NSObject, TabManager {
         return self.tabs(for: location.mode)[location.index].title
     }
     private lazy var selectionActionCoordinator = SelectionActionCoordinator(
-        presenter: SelectionActionPresenter(onMenuDismissed: requestContentKeyboardFocus)
+        presenter: SelectionActionPresenter(
+            onMenuDismissed: requestContentKeyboardFocus,
+            onFindInPage: { [weak self] session, query in
+                guard let self else { return }
+                self.delegate?.tabManager(self, didRequestFindInPage: query, in: session)
+            }
+        )
     )
     private lazy var permissionCoordinator = PermissionCoordinator(
         promptPresenter: PermissionPromptPresenter(),

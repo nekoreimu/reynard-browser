@@ -133,7 +133,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
             return
         }
         
-        browserChrome.showActionBar(.findInPage, animated: true)
+        browserChrome.showActionBar(.findInPage(), animated: true)
     }
     
     func addressBarDidRequestReader(_ addressBar: AddressBar) {
@@ -150,7 +150,7 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
         )
         controller.onFindInPage = { [weak self] in
             guard let self, self.tabManager.selectedTab === tab else { return }
-            self.browserChrome.showActionBar(.findInPage, animated: true)
+            self.browserChrome.showActionBar(.findInPage(), animated: true)
         }
         controller.configurePresentation(asPopover: browserLayout.chromeMode == .pad)
         if controller.modalPresentationStyle == .pageSheet {

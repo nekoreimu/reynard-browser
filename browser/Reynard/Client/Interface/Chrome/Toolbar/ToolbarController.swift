@@ -12,6 +12,7 @@ final class ToolbarController {
         case addressBarTransition
         case addressBarEditing
         case historyNavigation
+        case inputRelocation
         case pageNavigation
         case homepageOverlay
         case searchOverlay

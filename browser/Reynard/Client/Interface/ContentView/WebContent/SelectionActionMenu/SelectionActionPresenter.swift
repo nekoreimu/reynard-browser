@@ -12,17 +12,20 @@ import UIKit
 final class SelectionActionPresenter: SelectionActionPresenting {
     private var menuHosts: [ObjectIdentifier: SelectionActionMenuHostView] = [:]
     private let onMenuDismissed: (GeckoSession) -> Void
+    private let onFindInPage: (GeckoSession, String) -> Void
     
     // MARK: - Lifecycle
     
-    init(onMenuDismissed: @escaping (GeckoSession) -> Void) {
+    init(
+        onMenuDismissed: @escaping (GeckoSession) -> Void,
+        onFindInPage: @escaping (GeckoSession, String) -> Void
+    ) {
         self.onMenuDismissed = onMenuDismissed
+        self.onFindInPage = onFindInPage
     }
     
     func show(_ request: SelectionActionRequest, for session: GeckoSession) {
         guard request.editable == false,
-              request.actions.contains(SelectionActionCommand.copy) ||
-                request.actions.contains(SelectionActionCommand.selectAll),
               !request.selection.isEmpty,
               let targetView = session.engineView,
               let selectionRect = localRect(for: request.clientRect, in: targetView) else {
@@ -36,6 +39,7 @@ final class SelectionActionPresenter: SelectionActionPresenting {
             session: session,
             actionId: request.actionId,
             anchorRect: selectionRect,
+            selection: request.selection,
             actions: request.actions
         )
     }
@@ -56,7 +60,10 @@ final class SelectionActionPresenter: SelectionActionPresenting {
             return host
         }
         
-        let host = SelectionActionMenuHostView(onDismissed: onMenuDismissed)
+        let host = SelectionActionMenuHostView(
+            onDismissed: onMenuDismissed,
+            onFindInPage: onFindInPage
+        )
         menuHosts[key] = host
         return host
     }

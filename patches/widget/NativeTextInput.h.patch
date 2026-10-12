@@ -1,9 +1,9 @@
 diff --git a/widget/NativeTextInput.h b/widget/NativeTextInput.h
 new file mode 100644
-index 000000000000..18b6a46d2ca3
+index 000000000000..96b1200b2eb4
 --- /dev/null
 +++ b/widget/NativeTextInput.h
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,147 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -76,6 +76,11 @@ index 000000000000..18b6a46d2ca3
 +  nsString mText;
 +};
 +
++struct NativeTextInputStickyScrollRange {
++  gfx::RectAbsoluteTyped<CSSPixel> mOuter;
++  gfx::RectAbsoluteTyped<CSSPixel> mInner;
++};
++
 +struct NativeTextInputScrollReference {
 +  layers::ScrollableLayerGuid mGuid;
 +  MainThreadScrollGeneration mGeneration;
@@ -85,6 +90,7 @@ index 000000000000..18b6a46d2ca3
 +  LayoutDevicePoint mOrigin;
 +  float mZoom = 0.0f;
 +  bool mFixed = false;
++  CopyableTArray<NativeTextInputStickyScrollRange> mStickyRanges;
 +};
 +
 +struct NativeTextInputRect {
