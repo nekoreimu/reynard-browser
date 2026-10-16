@@ -1,0 +1,32 @@
+diff --git a/netwerk/socket/nsSOCKSIOLayer.cpp b/netwerk/socket/nsSOCKSIOLayer.cpp
+index de33c4c1c034..29a517f52432 100644
+--- a/netwerk/socket/nsSOCKSIOLayer.cpp
++++ b/netwerk/socket/nsSOCKSIOLayer.cpp
+@@ -22,6 +22,10 @@
+ #include "nspr.h"
+ #include "private/pprio.h"
+ 
++#ifdef MOZ_WIDGET_UIKIT
++#  include "nsSocketDomain.h"
++#endif
++
+ using mozilla::LogLevel;
+ using namespace mozilla::net;
+ 
+@@ -500,6 +504,16 @@ PRStatus nsSOCKSSocketInfo::ConnectToProxy(PRFileDesc* fd) {
+     FixupAddressFamily(fd, &proxy);
+     PRNetAddr prProxy;
+     NetAddrToPRNetAddr(&proxy, &prProxy);
++
++#ifdef MOZ_WIDGET_UIKIT
++    if (!IsLocalProxy()) {
++      int error = SetSocketDomain(PR_FileDesc2NativeHandle(fd), proxyHost);
++      if (error) {
++        LOGERROR(("socks: failed setting proxy socket domain: %d", error));
++      }
++    }
++#endif
++
+     status = fd->lower->methods->connect(fd->lower, &prProxy, mTimeout);
+     if (status != PR_SUCCESS) {
+       PRErrorCode c = PR_GetError();

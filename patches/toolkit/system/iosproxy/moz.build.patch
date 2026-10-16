@@ -1,0 +1,29 @@
+diff --git a/toolkit/system/iosproxy/moz.build b/toolkit/system/iosproxy/moz.build
+new file mode 100644
+index 000000000000..65cb3572a3fe
+--- /dev/null
++++ b/toolkit/system/iosproxy/moz.build
+@@ -0,0 +1,23 @@
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++# This source code is introduced during the work of an iOS 13+ browser
++# https://github.com/minh-ton/reynard-browser in Feb 2026.
++
++with Files("**"):
++    BUG_COMPONENT = ("Core", "Networking")
++
++SOURCES += [
++    "nsIOSSystemProxySettings.mm",
++]
++
++XPCOM_MANIFESTS += [
++    "components.conf",
++]
++
++OS_LIBS += [
++    "-framework CFNetwork",
++]
++
++FINAL_LIBRARY = "xul"

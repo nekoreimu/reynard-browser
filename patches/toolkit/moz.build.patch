@@ -1,0 +1,13 @@
+diff --git a/toolkit/moz.build b/toolkit/moz.build
+index 0f566d12ee59..fd06655876af 100644
+--- a/toolkit/moz.build
++++ b/toolkit/moz.build
+@@ -82,6 +82,8 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
+         "system/androidproxy",
+         "system/commonproxy",
+     ]
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
++    DIRS += ["system/iosproxy"]
+ 
+ TEST_HARNESS_FILES.testing.mochitest.browser.toolkit.crashreporter.test.browser += [
+     "crashreporter/test/browser/crashreport.sjs",

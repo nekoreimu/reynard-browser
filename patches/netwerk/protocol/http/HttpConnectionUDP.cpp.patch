@@ -1,0 +1,39 @@
+diff --git a/netwerk/protocol/http/HttpConnectionUDP.cpp b/netwerk/protocol/http/HttpConnectionUDP.cpp
+index db77675dde60..30d2a9d6079e 100644
+--- a/netwerk/protocol/http/HttpConnectionUDP.cpp
++++ b/netwerk/protocol/http/HttpConnectionUDP.cpp
+@@ -34,6 +34,10 @@
+ #include "nsStringStream.h"
+ #include "nsThreadUtils.h"
+ 
++#ifdef MOZ_WIDGET_UIKIT
++#  include "nsSocketDomain.h"
++#endif
++
+ namespace mozilla {
+ namespace net {
+ 
+@@ -317,6 +321,23 @@ nsresult HttpConnectionUDP::InitCommon(nsIUDPSocket* aSocket,
+     return rv;
+   }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  if (!isInTunnel) {
++    const char* host = mConnInfo->GetOrigin().get();
++    if (mConnInfo->IsHttp3ProxyConnection()) {
++      host = mConnInfo->ProxyHost();
++    } else if (!mConnInfo->GetRoutedHost().IsEmpty()) {
++      host = mConnInfo->GetRoutedHost().get();
++    }
++
++    int error = SetSocketDomain(static_cast<int>(mSocket->GetFileDescriptor()),
++                                nsDependentCString(host));
++    if (error) {
++      LOG(("HttpConnectionUDP: Failed setting socket domain: %d", error));
++    }
++  }
++#endif
++
+   rv = mSocket->SetRecvBufferSize(
+       StaticPrefs::network_http_http3_recvBufferSize());
+   if (NS_FAILED(rv)) {

@@ -1,0 +1,20 @@
+diff --git a/toolkit/system/iosproxy/components.conf b/toolkit/system/iosproxy/components.conf
+new file mode 100644
+index 000000000000..cc1dca00cd8b
+--- /dev/null
++++ b/toolkit/system/iosproxy/components.conf
+@@ -0,0 +1,14 @@
++# This Source Code Form is subject to the terms of the Mozilla Public
++# License, v. 2.0. If a copy of the MPL was not distributed with this
++# file, You can obtain one at http://mozilla.org/MPL/2.0/.
++
++# This source code is introduced during the work of an iOS 13+ browser
++# https://github.com/minh-ton/reynard-browser in Feb 2026.
++
++Classes = [
++    {
++        'cid': '{7835063b-81f9-4ae7-bbe6-3bda76bfaa95}',
++        'contract_ids': ['@mozilla.org/system-proxy-settings;1'],
++        'type': 'nsIOSSystemProxySettings',
++    },
++]

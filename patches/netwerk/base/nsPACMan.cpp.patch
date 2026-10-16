@@ -1,0 +1,38 @@
+diff --git a/netwerk/base/nsPACMan.cpp b/netwerk/base/nsPACMan.cpp
+index d00eae3f7395..d4a8e18cb2fd 100644
+--- a/netwerk/base/nsPACMan.cpp
++++ b/netwerk/base/nsPACMan.cpp
+@@ -883,24 +883,24 @@ bool nsPACMan::ProcessPending() {
+ 
+   // now try the system proxy settings for this particular url if
+   // PAC was not specified
+-  if (!completed && mSystemProxySettings && PACURI.IsEmpty() &&
+-      NS_SUCCEEDED(mSystemProxySettings->GetProxyForURI(
+-          query->mSpec, query->mScheme, query->mHost, query->mPort,
+-          pacString))) {
+-    if (query->mFlags & nsIProtocolProxyService::RESOLVE_PREFER_SOCKS_PROXY &&
+-        query->mFlags & nsIProtocolProxyService::RESOLVE_PREFER_HTTPS_PROXY) {
++  if (!completed && mSystemProxySettings && PACURI.IsEmpty()) {
++    nsresult status = mSystemProxySettings->GetProxyForURI(
++        query->mSpec, query->mScheme, query->mHost, query->mPort, pacString);
++    if (NS_SUCCEEDED(status) &&
++        (query->mFlags & nsIProtocolProxyService::RESOLVE_PREFER_SOCKS_PROXY) &&
++        (query->mFlags & nsIProtocolProxyService::RESOLVE_PREFER_HTTPS_PROXY)) {
+       if (StringBeginsWith(pacString, nsDependentCString(kProxyType_DIRECT),
+                            nsCaseInsensitiveUTF8StringComparator)) {
+         // DIRECT indicates that system proxy settings are not configured to use
+         // SOCKS proxy. Try https proxy as a secondary preferrable proxy. This
+         // is mainly for websocket whose precedence is SOCKS > HTTPS > DIRECT.
+-        NS_SUCCEEDED(mSystemProxySettings->GetProxyForURI(
++        status = mSystemProxySettings->GetProxyForURI(
+             query->mSpec, nsDependentCString(kProxyType_HTTPS), query->mHost,
+-            query->mPort, pacString));
++            query->mPort, pacString);
+       }
+     }
+     LOG(("Use proxy from system settings: %s\n", pacString.get()));
+-    query->Complete(NS_OK, pacString);
++    query->Complete(status, pacString);
+     completed = true;
+   }
+ 

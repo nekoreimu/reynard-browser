@@ -1,0 +1,43 @@
+diff --git a/netwerk/base/nsSocketDomain.h b/netwerk/base/nsSocketDomain.h
+new file mode 100644
+index 000000000000..f487bc205149
+--- /dev/null
++++ b/netwerk/base/nsSocketDomain.h
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef nsSocketDomain_h_
++#define nsSocketDomain_h_
++
++#include "mozilla/net/DNS.h"
++#include "nsString.h"
++
++extern "C" {
++#include <networkext/ne_socket.h>
++}
++
++namespace mozilla {
++namespace net {
++
++inline int SetSocketDomain(int aSocket, const nsACString& aHost) {
++  if (__builtin_available(iOS 15.0, *)) {
++    NetAddr address;
++    if (NS_FAILED(address.InitFromString(aHost))) {
++      const auto& host = PromiseFlatCString(aHost);
++      const char* domains[] = {host.get()};
++      return ne_socket_set_domains(aSocket, domains, 1);
++    }
++  }
++
++  return 0;
++}
++
++}  // namespace net
++}  // namespace mozilla
++
++#endif  // nsSocketDomain_h_

@@ -1,0 +1,177 @@
+diff --git a/toolkit/system/iosproxy/nsIOSSystemProxySettings.mm b/toolkit/system/iosproxy/nsIOSSystemProxySettings.mm
+new file mode 100644
+index 000000000000..865fab331c89
+--- /dev/null
++++ b/toolkit/system/iosproxy/nsIOSSystemProxySettings.mm
+@@ -0,0 +1,171 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import <CFNetwork/CFProxySupport.h>
++#import <Foundation/Foundation.h>
++
++#include "CFTypeRefPtr.h"
++#include "mozilla/Components.h"
++#include "nsISystemProxySettings.h"
++#include "nsString.h"
++
++class nsIOSSystemProxySettings final : public nsISystemProxySettings {
++ public:
++  NS_DECL_THREADSAFE_ISUPPORTS
++  NS_DECL_NSISYSTEMPROXYSETTINGS
++
++ private:
++  ~nsIOSSystemProxySettings() = default;
++};
++
++NS_IMPL_ISUPPORTS(nsIOSSystemProxySettings, nsISystemProxySettings)
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::GetMainThreadOnly(bool* aMainThreadOnly) {
++  *aMainThreadOnly = false;
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::GetPACURI(nsACString& aResult) {
++  aResult.Truncate();
++  return NS_OK;
++}
++
++static CFTypeRefPtr<CFArrayRef> ResolveAutoConfigProxy(NSDictionary* aProxy,
++                                                       NSURL* aURL) {
++  CFTypeRefPtr<CFArrayRef> result;
++  CFStreamClientContext context = {0, &result, nullptr, nullptr, nullptr};
++  auto callback = [](void* aContext, CFArrayRef aProxies, CFErrorRef aError) {
++    if (aProxies && !aError) {
++      static_cast<CFTypeRefPtr<CFArrayRef>*>(aContext)->AssignUnderGetRule(
++          aProxies);
++    }
++
++    CFRunLoopStop(CFRunLoopGetCurrent());
++  };
++
++  CFRunLoopSourceRef source;
++  if ([aProxy[(NSString*)kCFProxyTypeKey]
++          isEqual:(NSString*)kCFProxyTypeAutoConfigurationURL]) {
++    source = CFNetworkExecuteProxyAutoConfigurationURL(
++        (CFURLRef)aProxy[(NSString*)kCFProxyAutoConfigurationURLKey],
++        (CFURLRef)aURL, callback, &context);
++  } else {
++    source = CFNetworkExecuteProxyAutoConfigurationScript(
++        (CFStringRef)aProxy[(NSString*)kCFProxyAutoConfigurationJavaScriptKey],
++        (CFURLRef)aURL, callback, &context);
++  }
++
++  auto runLoopSource =
++      CFTypeRefPtr<CFRunLoopSourceRef>::WrapUnderCreateRule(source);
++  CFStringRef mode = CFSTR("ReynardProxyResolution");
++  CFRunLoopAddSource(CFRunLoopGetCurrent(), source, mode);
++
++  CFRunLoopRunInMode(mode, 60, false);
++  CFRunLoopSourceInvalidate(source);
++  return result;
++}
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::GetProxyForURI(const nsACString& aSpec,
++                                         const nsACString& aScheme,
++                                         const nsACString& aHost, int32_t aPort,
++                                         nsACString& aResult) {
++  aResult.Truncate();
++
++  @autoreleasepool {
++    auto settings = CFTypeRefPtr<CFDictionaryRef>::WrapUnderCreateRule(
++        CFNetworkCopySystemProxySettings());
++    if (!settings) {
++      aResult.AssignLiteral("DIRECT");
++      return NS_OK;
++    }
++
++    NSString* spec =
++        [NSString stringWithUTF8String:PromiseFlatCString(aSpec).get()];
++    NSURLComponents* components = [NSURLComponents componentsWithString:spec];
++    components.scheme =
++        [NSString stringWithUTF8String:PromiseFlatCString(aScheme).get()];
++    NSURL* url = components.URL;
++    if (!url) {
++      return NS_ERROR_FAILURE;
++    }
++
++    auto systemProxies = CFTypeRefPtr<CFArrayRef>::WrapUnderCreateRule(
++        CFNetworkCopyProxiesForURL((CFURLRef)url, settings.get()));
++    NSMutableArray* proxies = [NSMutableArray array];
++    for (NSDictionary* proxy in (NSArray*)systemProxies.get()) {
++      NSString* type = proxy[(NSString*)kCFProxyTypeKey];
++      if ([type isEqual:(NSString*)kCFProxyTypeAutoConfigurationURL] ||
++          [type isEqual:(NSString*)kCFProxyTypeAutoConfigurationJavaScript]) {
++        auto resolved = ResolveAutoConfigProxy(proxy, url);
++        if (resolved) {
++          [proxies addObjectsFromArray:(NSArray*)resolved.get()];
++        }
++      } else {
++        [proxies addObject:proxy];
++      }
++    }
++
++    for (NSDictionary* proxy in proxies) {
++      NSString* type = proxy[(NSString*)kCFProxyTypeKey];
++      const char* proxyType;
++      if ([type isEqual:(NSString*)kCFProxyTypeNone]) {
++        if (!aResult.IsEmpty()) {
++          aResult.AppendLiteral("; ");
++        }
++        aResult.AppendLiteral("DIRECT");
++        continue;
++      }
++
++      if ([type isEqual:(NSString*)kCFProxyTypeHTTP] ||
++          [type isEqual:(NSString*)kCFProxyTypeHTTPS]) {
++        proxyType = "PROXY";
++      } else if ([type isEqual:(NSString*)kCFProxyTypeSOCKS]) {
++        proxyType = "SOCKS5";
++      } else {
++        return NS_ERROR_FAILURE;
++      }
++
++      NSString* host = proxy[(NSString*)kCFProxyHostNameKey];
++      NSNumber* port = proxy[(NSString*)kCFProxyPortNumberKey];
++      bool ipv6 = [host rangeOfString:@":"].location != NSNotFound;
++      if (!aResult.IsEmpty()) {
++        aResult.AppendLiteral("; ");
++      }
++      aResult.AppendPrintf("%s %s%s%s:%d", proxyType, ipv6 ? "[" : "",
++                           host.UTF8String, ipv6 ? "]" : "", port.intValue);
++    }
++  }
++
++  return aResult.IsEmpty() ? NS_ERROR_FAILURE : NS_OK;
++}
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::GetSystemWPADSetting(bool* aSystemWPADSetting) {
++  *aSystemWPADSetting = false;
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::GetSystemProxyDirect(bool* aResult) {
++  *aResult = false;
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsIOSSystemProxySettings::SetSystemProxyInfo(
++    const nsACString& aHost, int32_t aPort, const nsACString& aPacFileUrl,
++    const nsTArray<nsCString>& aExclusionList) {
++  return NS_ERROR_NOT_IMPLEMENTED;
++}
++
++NS_IMPL_COMPONENT_FACTORY(nsIOSSystemProxySettings) {
++  return mozilla::MakeAndAddRef<nsIOSSystemProxySettings>()
++      .downcast<nsISupports>();
++}

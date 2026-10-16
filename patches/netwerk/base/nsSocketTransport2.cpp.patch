@@ -1,0 +1,34 @@
+diff --git a/netwerk/base/nsSocketTransport2.cpp b/netwerk/base/nsSocketTransport2.cpp
+index d617846df327..794723883dec 100644
+--- a/netwerk/base/nsSocketTransport2.cpp
++++ b/netwerk/base/nsSocketTransport2.cpp
+@@ -59,6 +59,10 @@
+ #  include "AndroidNetworkBlockedReason.h"
+ #endif
+ 
++#ifdef MOZ_WIDGET_UIKIT
++#  include "nsSocketDomain.h"
++#endif
++
+ /* Following inclusions required for keepalive config not supported by NSPR. */
+ #include "private/pprio.h"
+ #if defined(XP_WIN)
+@@ -1563,6 +1567,18 @@ nsresult nsSocketTransport::InitiateSocket() {
+ 
+   NetAddrToPRNetAddr(&mNetAddr, &prAddr);
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  // The SOCKS layer sets the proxy domain after choosing its native socket.
++  if (!mProxyTransparent &&
++      (mNetAddr.raw.family == AF_INET || mNetAddr.raw.family == AF_INET6)) {
++    int error = SetSocketDomain(PR_FileDesc2NativeHandle(fd), SocketHost());
++    if (error) {
++      SOCKET_LOG(
++          ("nsSocketTransport: Failed setting socket domain: %d\n", error));
++    }
++  }
++#endif
++
+ #ifdef XP_WIN
+   // Find the real tcp socket and set non-blocking once again!
+   // Bug 1158189.
