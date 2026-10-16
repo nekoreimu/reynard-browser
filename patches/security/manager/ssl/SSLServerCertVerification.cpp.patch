@@ -10,14 +10,7 @@ diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manag
  #include "CertVerifier.h"
  #include "CryptoTask.h"
  #include "ExtendedValidation.h"
-@@ -116,5 +119,6 @@
- #include "nsContentUtils.h"
- #include "nsICertOverrideService.h"
-+#include "nsINSSComponent.h"
- #include "nsIPublicKeyPinningService.h"
- #include "nsISiteSecurityService.h"
- #include "nsISocketProvider.h"
-@@ -140,6 +144,96 @@
+@@ -140,6 +143,100 @@
  namespace mozilla {
  namespace psm {
 
@@ -86,8 +79,12 @@ diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manag
 +          CFRelease(anchorDER);
 +          nsCOMPtr<nsINSSComponent> nssComponent =
 +              do_GetService("@mozilla.org/psm;1");
-+          if (nssComponent &&
-+              NS_SUCCEEDED(nssComponent->AddEnterpriseRoot(anchorDERBytes))) {
++          // Downcast to reach the concrete C++-only method without
++          // extending the frozen XPCOM interface (avoids an IDL rebuild).
++          auto* concrete =
++              static_cast<nsNSSComponent*>(nssComponent.get());
++          if (concrete &&
++              NS_SUCCEEDED(concrete->AddEnterpriseRoot(anchorDERBytes))) {
 +            MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
 +                    ("imported iOS platform anchor as enterprise root"));
 +            imported = true;
@@ -114,7 +111,7 @@ diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manag
  // do not use a nsCOMPtr to avoid static initializer/destructor
  nsIThreadPool* gCertVerificationThreadPool = nullptr;
 
-@@ -799,12 +893,34 @@
+@@ -799,12 +896,34 @@
    bool madeOCSPRequests = false;
    nsTArray<nsTArray<uint8_t>> builtChainBytesArray;
    nsTArray<uint8_t> certBytes(mPeerCertChain.ElementAt(0).Clone());

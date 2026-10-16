@@ -1,0 +1,9 @@
+diff --git a/security/manager/ssl/nsNSSComponent.h b/security/manager/ssl/nsNSSComponent.h
+--- a/security/manager/ssl/nsNSSComponent.h
++++ b/security/manager/ssl/nsNSSComponent.h
+@@ -91,3 +91,5 @@
+   nsresult Init();
+
++  // Adds a DER-encoded cert to the in-memory enterprise trust roots.
++  nsresult AddEnterpriseRoot(const nsACString& aDER);
+   static nsresult GetNewPrompter(nsIPrompt** result);

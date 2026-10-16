@@ -1,12 +1,11 @@
 diff --git a/security/manager/ssl/nsNSSComponent.cpp b/security/manager/ssl/nsNSSComponent.cpp
 --- a/security/manager/ssl/nsNSSComponent.cpp
 +++ b/security/manager/ssl/nsNSSComponent.cpp
-@@ -343,6 +343,47 @@
+@@ -343,6 +343,46 @@
      MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("failed gathering enterprise roots"));
    }
  }
-+NS_IMETHODIMP
-+nsNSSComponent::AddEnterpriseRoot(const nsACString& aDER) {
++nsresult nsNSSComponent::AddEnterpriseRoot(const nsACString& aDER) {
 +  if (aDER.IsEmpty()) {
 +    return NS_ERROR_INVALID_ARG;
 +  }
