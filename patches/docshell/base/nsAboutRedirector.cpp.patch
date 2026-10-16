@@ -1,0 +1,21 @@
+diff --git a/docshell/base/nsAboutRedirector.cpp b/docshell/base/nsAboutRedirector.cpp
+--- a/docshell/base/nsAboutRedirector.cpp
++++ b/docshell/base/nsAboutRedirector.cpp
+@@ -163,6 +163,17 @@
+      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
+          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
++#ifdef MOZ_WIDGET_UIKIT
++    // The browser/ application registers about:certerror in
++    // browser/components/about/AboutRedirector.cpp, which is not built for
++    // mobile/ios. Register it here so certificate error pages
++    // (about:certerror?e=nssBadCert...) can load and the "Advanced" /
++    // "Accept the Risk and Continue" override flow works (see #318).
++    {"certerror", "chrome://global/content/aboutNetError.html",
++     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
++         nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
++         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
++#endif
+     {"networking", "chrome://global/content/aboutNetworking.html",
+      nsIAboutModule::ALLOW_SCRIPT},
+ #ifndef MOZ_WIDGET_ANDROID

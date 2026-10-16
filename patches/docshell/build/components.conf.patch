@@ -1,0 +1,17 @@
+diff --git a/docshell/build/components.conf b/docshell/build/components.conf
+index 1f86eca..7abc135 100644
+--- a/docshell/build/components.conf
++++ b/docshell/build/components.conf
+@@ -55,6 +55,12 @@ if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] != 'android' and buildconfig.substs[
+     about_pages.append('webauthn')
+ if defined('NIGHTLY_BUILD'):
+     about_pages.append('inference')
++if buildconfig.substs['MOZ_WIDGET_TOOLKIT'] == 'uikit':
++    # about:certerror is registered by browser/components/about for the
++    # desktop browser/ app only, which is not built for mobile/ios.
++    # Register it via nsAboutRedirector on iOS so certificate error pages
++    # (about:certerror?e=nssBadCert...) can load (see #318).
++    about_pages.append('certerror')
+ 
+ Headers = ['/docshell/build/nsDocShellModule.h']
+ 

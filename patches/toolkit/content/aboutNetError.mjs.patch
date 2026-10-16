@@ -1,0 +1,67 @@
+diff --git a/toolkit/content/aboutNetError.mjs b/toolkit/content/aboutNetError.mjs
+--- a/toolkit/content/aboutNetError.mjs
++++ b/toolkit/content/aboutNetError.mjs
+@@ -78,5 +78,10 @@
+ /* The error message IDs from nsserror.ftl get processed into
+  * aboutNetErrorCodes.js which is loaded before we are: */
+ /* global KNOWN_ERROR_MESSAGE_IDS */
++if (typeof globalThis.KNOWN_ERROR_MESSAGE_IDS === "undefined") {
++  // aboutNetErrorCodes.js may fail to load on some builds; fall back to an
++  // empty set so error-code details are skipped but the page keeps working.
++  globalThis.KNOWN_ERROR_MESSAGE_IDS = new Set();
++}
+ const ERROR_MESSAGES_FTL = "toolkit/neterror/nsserrors.ftl";
+ 
+@@ -454,4 +454,6 @@
+     initCertErrorPageActions();
+     setTechnicalDetailsOnCertError();
++    // Fall back to built-in English for any strings Fluent left empty.
++    applyEnglishFallbackStrings();
+     return;
+   }
+@@ -1337,3 +1337,45 @@
+ }
+ 
+ main();
++// English fallback strings for the certificate error page, used when Fluent
++// localization resources are unavailable. Keys mirror data-l10n-id values;
++// {hostname} is replaced with the failed hostname. Fluent translations, when
++// available, overwrite these via the normal data-l10n-id mechanism.
++const ENGLISH_FALLBACK_STRINGS = {
++  "neterror-page-title": "Problem loading page",
++  "certerror-page-title": "Warning: Potential Security Risk Ahead",
++  "certerror-sts-page-title": "Did Not Connect: Potential Security Issue",
++  "nssBadCert-title": "Warning: Potential Security Risk Ahead",
++  "nssBadCert-sts-title": "Did Not Connect: Potential Security Issue",
++  "certerror-intro":
++    "Firefox detected a potential security threat and did not continue to " +
++    "{hostname}. If you visit this site, attackers could try to steal " +
++    "information like your passwords, emails, or credit card details.",
++  "certerror-sts-intro":
++    "Firefox detected a potential security threat and did not continue to " +
++    "{hostname} because this website requires a secure connection.",
++  "neterror-advanced-button": "Advanced\u2026",
++  "neterror-return-to-previous-page-button": "Go Back",
++  "neterror-return-to-previous-page-recommended-button": "Go Back (Recommended)",
++  "neterror-override-exception-button": "Accept the Risk and Continue",
++  "neterror-view-certificate-link": "View Certificate",
++  "neterror-learn-more-link": "Learn more\u2026",
++  "neterror-try-again-button-2": "Try Again",
++  "neterror-copy-to-clipboard-button": "Copy text to clipboard",
++};
++// Fill every localizable element Fluent left empty with built-in English.
++// Safe to call unconditionally: elements already translated are skipped,
++// and later Fluent updates overwrite these values normally.
++function applyEnglishFallbackStrings() {
++  for (const element of document.querySelectorAll("[data-l10n-id]")) {
++    const l10nId = element.getAttribute("data-l10n-id");
++    let text = ENGLISH_FALLBACK_STRINGS[l10nId];
++    if (text === undefined || element.textContent.trim() !== "") {
++      continue;
++    }
++    if (typeof HOST_NAME === "string" && HOST_NAME) {
++      text = text.split("{hostname}").join(HOST_NAME);
++    }
++    element.textContent = text;
++  }
++}

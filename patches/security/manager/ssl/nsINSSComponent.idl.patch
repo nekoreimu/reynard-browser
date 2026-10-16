@@ -1,0 +1,18 @@
+diff --git a/security/manager/ssl/nsINSSComponent.idl b/security/manager/ssl/nsINSSComponent.idl
+--- a/security/manager/ssl/nsINSSComponent.idl
++++ b/security/manager/ssl/nsINSSComponent.idl
+@@ -91,4 +91,14 @@
+    * Only available from the main thread.
+    */
+   readonly attribute nsISerialEventTarget nssTaskQueue;
++
++  /**
++   * Adds a DER-encoded certificate to the in-memory enterprise trust roots
++   * (as if it had been gathered from the OS trust store) and refreshes the
++   * shared certificate verifier so later verifications can build chains to
++   * it. Duplicates and certificates that already ship with NSS are ignored.
++   * Used on platforms where the OS trust store cannot be enumerated up
++   * front (iOS) after the platform has been observed to trust a chain.
++   */
++  void addEnterpriseRoot(in ACString aDER);
+ };

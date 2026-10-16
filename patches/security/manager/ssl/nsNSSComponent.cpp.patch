@@ -1,0 +1,51 @@
+diff --git a/security/manager/ssl/nsNSSComponent.cpp b/security/manager/ssl/nsNSSComponent.cpp
+--- a/security/manager/ssl/nsNSSComponent.cpp
++++ b/security/manager/ssl/nsNSSComponent.cpp
+@@ -343,6 +343,47 @@
+     MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("failed gathering enterprise roots"));
+   }
+ }
++NS_IMETHODIMP
++nsNSSComponent::AddEnterpriseRoot(const nsACString& aDER) {
++  if (aDER.IsEmpty()) {
++    return NS_ERROR_INVALID_ARG;
++  }
++  UniqueSECMODModule rootsModule(
++      SECMOD_FindModule(mozilla::psm::kRootModuleName.get()));
++  {
++    MutexAutoLock lock(mMutex);
++    // Ignore certificates already in the list.
++    for (const auto& cert : mEnterpriseCerts) {
++      nsTArray<uint8_t> existingBytes;
++      cert.CopyBytes(existingBytes);
++      if (existingBytes.Length() != aDER.Length()) {
++        continue;
++      }
++      bool equal = true;
++      const uint8_t* existing = existingBytes.Elements();
++      const char* incoming = aDER.BeginReading();
++      for (size_t i = 0; i < existingBytes.Length(); i++) {
++        if (existing[i] != static_cast<uint8_t>(incoming[i])) {
++          equal = false;
++          break;
++        }
++      }
++      if (equal) {
++        return NS_OK;
++      }
++    }
++    EnterpriseCert enterpriseCert(
++        reinterpret_cast<const uint8_t*>(aDER.BeginReading()), aDER.Length(),
++        /*isRoot=*/true);
++    if (rootsModule && enterpriseCert.IsKnownRoot(rootsModule)) {
++      // Already shipped with NSS; nothing to do.
++      return NS_OK;
++    }
++    mEnterpriseCerts.AppendElement(std::move(enterpriseCert));
++  }
++  UpdateCertVerifierWithEnterpriseRoots();
++  return NS_OK;
++}
+
+ nsresult nsNSSComponent::CommonGetEnterpriseCerts(
+     nsTArray<nsTArray<uint8_t>>& enterpriseCerts, bool getRoots) {
