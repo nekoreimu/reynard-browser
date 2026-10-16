@@ -5,21 +5,23 @@ on:
     - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
-      build_normal_ipa:
-        description: Build normal IPA
+      variant:
+        description: IPA variant to build
+        type: choice
+        default: all
+        required: false
+        options:
+          - all
+          - normal
+          - trollstore
+          - jailbroken
+      disable_lto:
+        description: Disable LTO to fit the 6h limit (smaller/slower binary)
         required: false
         default: true
         type: boolean
-      build_trollstore_tipa:
-        description: Build TrollStore TIPA
-        required: false
-        default: true
-        type: boolean
-      build_jailbroken_ipa:
-        description: Build Jailbroken IPA
-        required: false
-        default: true
-        type: boolean
+
+run-name: "Build Nightly (${{ inputs.variant || 'all' }})"
 
 permissions:
   contents: read
@@ -30,6 +32,7 @@ jobs:
     with:
       checkout_ref: ${{ github.sha }}
       nightly: true
-      build_normal_ipa: ${{ github.event_name == 'schedule' || inputs.build_normal_ipa }}
-      build_trollstore_tipa: ${{ github.event_name == 'schedule' || inputs.build_trollstore_tipa }}
-      build_jailbroken_ipa: ${{ github.event_name == 'schedule' || inputs.build_jailbroken_ipa }}
+      build_normal_ipa: ${{ github.event_name == 'schedule' || inputs.variant == 'all' || inputs.variant == 'normal' }}
+      build_trollstore_tipa: ${{ github.event_name == 'schedule' || inputs.variant == 'all' || inputs.variant == 'trollstore' }}
+      build_jailbroken_ipa: ${{ github.event_name == 'schedule' || inputs.variant == 'all' || inputs.variant == 'jailbroken' }}
+      disable_lto: ${{ github.event_name == 'schedule' || inputs.disable_lto }}
