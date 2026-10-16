@@ -27,6 +27,11 @@ on:
         required: false
         default: true
         type: boolean
+      disable_lto:
+        description: Disable LTO to speed up the build (smaller/slower binary)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -47,9 +52,11 @@ jobs:
           BUILD_NORMAL_IPA: ${{ inputs.build_normal_ipa }}
           BUILD_TROLLSTORE_TIPA: ${{ inputs.build_trollstore_tipa }}
           BUILD_JAILBROKEN_IPA: ${{ inputs.build_jailbroken_ipa }}
+          DISABLE_LTO: ${{ inputs.disable_lto }}
         with:
           script: |
             const variants = [];
+            const extraArgs = process.env.DISABLE_LTO === 'true' ? ' --disable-lto' : '';
 
             if (
               process.env.BUILD_NORMAL_IPA === 'true' ||
@@ -57,7 +64,7 @@ jobs:
             ) {
               variants.push({
                 variant: 'standard',
-                build_args: '--use-sccache --auto-clobber',
+                build_args: '--use-sccache --auto-clobber' + extraArgs,
                 sccache_namespace: 'standard',
               });
             }
@@ -67,7 +74,7 @@ jobs:
             ) {
               variants.push({
                 variant: 'nojemalloc',
-                build_args: '--disable-jemalloc --use-sccache --auto-clobber',
+                build_args: '--disable-jemalloc --use-sccache --auto-clobber' + extraArgs,
                 sccache_namespace: 'nojemalloc',
               });
             }
@@ -101,6 +108,9 @@ jobs:
           xcode-version: '26.6'
 
       - name: Install build dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: |
           brew install python@3.12 lld cbindgen llvm
           echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
@@ -159,10 +169,17 @@ jobs:
           LD: ld64.lld
         run: ./tools/development/build-gecko.sh ${{ matrix.build_args }}
 
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats || true
+
       - name: Build idevice support library
         run: ./tools/development/build-idevice.sh
 
       - name: Install packaging dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
         run: brew install ldid
 
       - name: Build app
