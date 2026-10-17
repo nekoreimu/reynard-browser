@@ -1,0 +1,21 @@
+diff --git a/toolkit/components/aboutmemory/content/aboutMemory.js b/toolkit/components/aboutmemory/content/aboutMemory.js
+index 16f94f6733f3..f0825a77064e 100644
+--- a/toolkit/components/aboutmemory/content/aboutMemory.js
++++ b/toolkit/components/aboutmemory/content/aboutMemory.js
+@@ -175,6 +175,7 @@ function squarify(items, rect) {
+       result.push({
+         rect: itemRect,
+         item: items[i].item,
++        weight: items[i].weight,
+       });
+       offset += itemWidth;
+     }
+@@ -2386,7 +2387,7 @@ function appendAboutMemoryMain(
+         content,
+         "div",
+         "treemapEntryText treemapEntryMemoryUsed",
+-        formatBytes(infoByProcess[entry.item].residentUnique)
++        formatBytes(entry.weight)
+       );
+       if (splitProcessName[1]) {
+         appendElementWithText(
