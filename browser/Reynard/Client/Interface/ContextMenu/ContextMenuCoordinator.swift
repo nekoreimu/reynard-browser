@@ -25,6 +25,17 @@ final class ContextMenuCoordinator: NSObject {
         static let targetedPreviewSideLength: CGFloat = 1
     }
     
+    private final class MenuInteraction: UIContextMenuInteraction {
+        @available(iOS 14.0, *)
+        override var menuAppearance: UIContextMenuInteraction.appearance {
+            if (delegate as? ContextMenuCoordinator)?.pendingContext?.allowsPreview == false {
+                return .compact
+            }
+            
+            return super.menuAppearance
+        }
+    }
+    
     private weak var host: ContextMenuCoordinatorHost?
     private let sessionManager: SessionManager
     private var pendingContext: ContextMenuContext?
@@ -45,17 +56,24 @@ final class ContextMenuCoordinator: NSObject {
             return
         }
         
-        let interaction = UIContextMenuInteraction(delegate: self)
+        let interaction = MenuInteraction(delegate: self)
         host.contextMenuSourceView.addWebViewInteraction(interaction)
         self.interaction = interaction
     }
     
     func present(at point: CGPoint, target: ContextMenuContext.Target, allowsPreview: Bool) {
-        guard let interaction else {
+        guard let interaction,
+              let interactionView = interaction.view,
+              let host,
+              let window = interactionView.window else {
             return
         }
         
-        let context = ContextMenuContext(target: target, point: point, allowsPreview: allowsPreview)
+        let sourceView = host.contextMenuSourceView
+        let sourcePoint = allowsPreview
+        ? sourceView.convert(point, from: window.screen.coordinateSpace)
+        : interaction.location(in: sourceView)
+        let context = ContextMenuContext(target: target, point: sourcePoint, allowsPreview: allowsPreview)
         closePreview()
         pendingContext = context
         isCommitting = false
@@ -69,7 +87,12 @@ final class ContextMenuCoordinator: NSObject {
         }
         
         Haptics.rigid()
-        _ = interaction.perform(selector, with: NSValue(cgPoint: context.point))
+        
+        let location = interactionView.convert(context.point, from: sourceView)
+        let implementation = interaction.method(for: selector)
+        typealias PresentMenu = @convention(c) (AnyObject, Selector, CGPoint) -> Void
+        let presentMenu = unsafeBitCast(implementation, to: PresentMenu.self)
+        presentMenu(interaction, selector, location)
     }
     
     private func openLinkPreview(disposition: TabOpenDisposition) {
@@ -175,6 +198,30 @@ final class ContextMenuCoordinator: NSObject {
 }
 
 extension ContextMenuCoordinator: UIContextMenuInteractionDelegate {
+    @objc(_contextMenuInteraction:styleForMenuWithConfiguration:)
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        styleForMenuWithConfiguration configuration: UIContextMenuConfiguration
+    ) -> _UIContextMenuStyle? {
+        guard interaction === self.interaction,
+              let context = pendingContext,
+              !context.allowsPreview,
+              let sourceView = host?.contextMenuSourceView else {
+            return nil
+        }
+        
+        let alignment: UIRectEdge = context.point.x > sourceView.bounds.midX ? .right : .left
+        let style = _UIContextMenuStyle.default()
+        style._preferredAnchor = ContextMenuAnchor(
+            attachment: .bottom,
+            alignment: alignment,
+            attachmentOffset: 0,
+            alignmentOffset: 0,
+            gravity: 0
+        )
+        return style
+    }
+    
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
         configurationForMenuAtLocation location: CGPoint

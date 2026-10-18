@@ -1,0 +1,15 @@
+diff --git a/layout/base/TouchManager.cpp b/layout/base/TouchManager.cpp
+index f74a666e3596..268de695bef9 100644
+--- a/layout/base/TouchManager.cpp
++++ b/layout/base/TouchManager.cpp
+@@ -148,6 +148,10 @@ nsIFrame* TouchManager::SetupTarget(WidgetTouchEvent* aEvent,
+     } else {
+       // find the target for this touch
+       RelativeTo relativeTo{aFrame};
++      if (aFrame->Type() == LayoutFrameType::Viewport &&
++          aFrame->PresContext()->IsChrome()) {
++        relativeTo.mViewportType = ViewportType::Visual;
++      }
+       nsPoint eventPoint = nsLayoutUtils::GetEventCoordinatesRelativeTo(
+           aEvent, touch->mRefPoint, relativeTo);
+       target = FindFrameTargetedByInputEvent(aEvent, relativeTo, eventPoint);

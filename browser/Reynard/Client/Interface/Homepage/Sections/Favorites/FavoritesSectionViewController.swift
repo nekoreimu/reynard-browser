@@ -194,6 +194,18 @@ final class FavoritesSectionViewController: UIViewController {
         reorderGesture.minimumPressDuration = UX.reorderMinimumPressDuration
         reorderGesture.delegate = self
         collectionView.addGestureRecognizer(reorderGesture)
+        
+        if #available(iOS 13.4, *) {
+            let pointerDragGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePointerDrag(_:)))
+            pointerDragGesture.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+            pointerDragGesture.delegate = self
+            collectionView.addGestureRecognizer(pointerDragGesture)
+            
+            let secondaryClickGesture = UITapGestureRecognizer(target: self, action: #selector(handleSecondaryClick(_:)))
+            secondaryClickGesture.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirectPointer.rawValue)]
+            secondaryClickGesture.buttonMaskRequired = .secondary
+            collectionView.addGestureRecognizer(secondaryClickGesture)
+        }
     }
     
     private func observeBookmarks() {
@@ -436,6 +448,46 @@ final class FavoritesSectionViewController: UIViewController {
     
     // MARK: - Reorder
     
+    @objc private func handlePointerDrag(_ gestureRecognizer: UIPanGestureRecognizer) {
+        let location = gestureRecognizer.location(in: collectionView)
+        
+        switch gestureRecognizer.state {
+        case .began:
+            let translation = gestureRecognizer.translation(in: collectionView)
+            let startLocation = CGPoint(x: location.x - translation.x, y: location.y - translation.y)
+            guard let indexPath = collectionView.indexPathForItem(at: startLocation),
+                  let cell = collectionView.cellForItem(at: indexPath),
+                  collectionView.beginInteractiveMovementForItem(at: indexPath) else {
+                return
+            }
+            
+            setFavoriteCell(cell, lifted: true, animated: true)
+            reorderState = .active(cell: cell)
+            collectionView.updateInteractiveMovementTargetPosition(location)
+            
+        case .changed:
+            if case .active = reorderState {
+                collectionView.updateInteractiveMovementTargetPosition(location)
+            }
+            
+        case .ended:
+            finishFavoriteReordering(cancelled: false)
+            
+        default:
+            finishFavoriteReordering(cancelled: true)
+        }
+    }
+    
+    @objc private func handleSecondaryClick(_ gestureRecognizer: UITapGestureRecognizer) {
+        let location = gestureRecognizer.location(in: collectionView)
+        guard let indexPath = collectionView.indexPathForItem(at: location),
+              let cell = collectionView.cellForItem(at: indexPath) else {
+            return
+        }
+        
+        presentFavoriteContextMenu(for: cell)
+    }
+    
     @objc private func handleReorderLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
         let pressLocation = gestureRecognizer.location(in: collectionView)
         
@@ -648,6 +700,24 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
 }
 
 extension FavoritesSectionViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if #available(iOS 13.4, *),
+           gestureRecognizer is UIPanGestureRecognizer {
+            return gestureRecognizer.buttonMask == .primary
+        }
+        
+        return true
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if #available(iOS 13.4, *),
+           gestureRecognizer is UILongPressGestureRecognizer {
+            return touch.type != .indirectPointer
+        }
+        
+        return true
+    }
+    
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
