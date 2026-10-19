@@ -20,9 +20,6 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         static let returnAnimationDuration: TimeInterval = 0.45
         static let returnSpringDamping: CGFloat = 0.9
         static let scrollToTopTriggerOffset: CGFloat = 1
-        static let errorTopInset: CGFloat = 96
-        static let errorHorizontalInset: CGFloat = 32
-        static let maximumErrorWidth: CGFloat = 480
     }
     
     enum VisibilityState: Equatable {
@@ -42,7 +39,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     private let webView = GeckoView()
     private let pageBackgroundView = UIView()
-    private let errorLabel = UILabel()
+    private let errorView = WebContentErrorView()
     private let scrollToTopTriggerView = UIScrollView() // For scrolling up when tap the iOS status bar
     private let refreshIndicatorContainer = UIView()
     private let refreshIndicator = UIActivityIndicatorView(style: .large)
@@ -95,7 +92,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         backgroundColor = .systemBackground
         webView.translatesAutoresizingMaskIntoConstraints = false
         pageBackgroundView.translatesAutoresizingMaskIntoConstraints = false
-        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        errorView.translatesAutoresizingMaskIntoConstraints = false
         scrollToTopTriggerView.translatesAutoresizingMaskIntoConstraints = false
         refreshIndicatorContainer.translatesAutoresizingMaskIntoConstraints = false
         refreshIndicator.translatesAutoresizingMaskIntoConstraints = false
@@ -105,19 +102,14 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         webView.interactionDelegate = self
         pageBackgroundView.backgroundColor = .systemBackground
         updateRefreshIndicatorTint()
-        errorLabel.font = .preferredFont(forTextStyle: .body)
-        errorLabel.adjustsFontForContentSizeCategory = true
-        errorLabel.numberOfLines = 0
-        errorLabel.textAlignment = .center
-        errorLabel.textColor = .secondaryLabel
-        errorLabel.isHidden = true
+        errorView.isHidden = true
         refreshIndicator.hidesWhenStopped = false
         refreshIndicatorContainer.addSubview(refreshIndicator)
         addSubview(scrollToTopTriggerView)
         addSubview(pageBackgroundView)
         addSubview(webView)
         addSubview(refreshIndicatorContainer)
-        addSubview(errorLabel)
+        addSubview(errorView)
         resetRefreshIndicator()
         refreshIndicatorContainer.alpha = 0
     }
@@ -143,16 +135,8 @@ final class WebContentView: UIView, UIScrollViewDelegate {
             webView.trailingAnchor.constraint(equalTo: trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: bottomAnchor),
             
-            errorLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            errorLabel.leadingAnchor.constraint(
-                greaterThanOrEqualTo: safeAreaLayoutGuide.leadingAnchor,
-                constant: UX.errorHorizontalInset
-            ),
-            errorLabel.trailingAnchor.constraint(
-                lessThanOrEqualTo: safeAreaLayoutGuide.trailingAnchor,
-                constant: -UX.errorHorizontalInset
-            ),
-            errorLabel.widthAnchor.constraint(lessThanOrEqualToConstant: UX.maximumErrorWidth),
+            errorView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            errorView.trailingAnchor.constraint(equalTo: trailingAnchor),
             
             refreshIndicatorContainer.centerXAnchor.constraint(equalTo: centerXAnchor),
             refreshIndicator.topAnchor.constraint(equalTo: refreshIndicatorContainer.topAnchor),
@@ -160,10 +144,6 @@ final class WebContentView: UIView, UIScrollViewDelegate {
             refreshIndicator.trailingAnchor.constraint(equalTo: refreshIndicatorContainer.trailingAnchor),
             refreshIndicator.bottomAnchor.constraint(equalTo: refreshIndicatorContainer.bottomAnchor),
         ])
-    }
-    
-    func positionErrorLabel(below topAnchor: NSLayoutYAxisAnchor) {
-        errorLabel.topAnchor.constraint(equalTo: topAnchor, constant: UX.errorTopInset).isActive = true
     }
     
     func positionRefreshIndicator(below topAnchor: NSLayoutYAxisAnchor) {
@@ -202,7 +182,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     private func applyVisibility() {
         isHidden = visibility == .hidden
-        scrollToTopTriggerView.scrollsToTop = visibility == .visible
+        scrollToTopTriggerView.scrollsToTop = visibility == .visible && errorView.isHidden
     }
     
     func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
@@ -211,7 +191,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
-        hidePageError()
+        updateLoadError(for: tab)
         pageBackgroundView.backgroundColor = pageBackgroundColor ?? .systemBackground
         updateRefreshIndicatorTint()
         
@@ -235,28 +215,8 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         awaitsScrollInteraction = true
     }
     
-    func showPageError(for url: String?) {
-        guard UIApplication.shared.applicationState == .active else {
-            return
-        }
-        
-        let page = url?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let page, !page.isEmpty {
-            let format = NSLocalizedString("A problem occurred on “%@”.", comment: "Webpage URL")
-            errorLabel.text = String(format: format, page)
-        } else {
-            errorLabel.text = NSLocalizedString("A problem occurred on this webpage.", comment: "")
-        }
-        errorLabel.isHidden = false
-        setPullToRefreshEnabled(false)
-    }
-    
-    private func hidePageError() {
-        errorLabel.isHidden = true
-        errorLabel.text = nil
-    }
-    
     func setPullToRefreshEnabled(_ enabled: Bool) {
+        let enabled = enabled && errorView.isHidden
         guard enabled != (pullToRefreshRecognizer != nil) else {
             return
         }
@@ -306,12 +266,41 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         let renderer = UIGraphicsImageRenderer(size: captureBounds.size)
         return renderer.image { context in
             context.cgContext.translateBy(x: -captureBounds.minX, y: -captureBounds.minY)
-            layer.render(in: context.cgContext)
+            drawHierarchy(in: bounds, afterScreenUpdates: false)
         }
     }
     
     private var thumbnailBounds: CGRect {
         return bounds.union(pageBackgroundView.frame)
+    }
+    
+    var onErrorAction: ((WebContentErrorView.Action) -> Void)? {
+        get { return errorView.onAction }
+        set { errorView.onAction = newValue }
+    }
+    
+    func positionErrorView(
+        from topAnchor: NSLayoutYAxisAnchor,
+        to bottomAnchor: NSLayoutYAxisAnchor,
+        viewport: UIView
+    ) {
+        NSLayoutConstraint.activate([
+            errorView.topAnchor.constraint(equalTo: topAnchor),
+            errorView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        errorView.configureContentLayout(
+            topAnchor: viewport.topAnchor,
+            bottomAnchor: viewport.bottomAnchor
+        )
+    }
+    
+    func updateLoadError(for tab: Tab?) {
+        errorView.configure(
+            error: tab?.state.loadError,
+            canGoBack: tab?.state.navigationState.canGoBack == true
+        )
+        webView.accessibilityElementsHidden = !errorView.isHidden
+        applyVisibility()
     }
     
     private func installPullToRefreshRecognizer() {

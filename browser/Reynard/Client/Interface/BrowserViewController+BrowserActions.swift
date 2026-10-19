@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 16/6/26.
 //
 
+import GeckoView
 import UIKit
 
 extension BrowserViewController {
@@ -86,6 +87,44 @@ extension BrowserViewController {
             return
         }
         libraryController.toggleSection(section)
+    }
+    
+    func performErrorPageAction(_ action: WebContentErrorView.Action) {
+        guard let tab = tabManager.selectedTab,
+              let loadError = tab.state.loadError else {
+            return
+        }
+        
+        switch action {
+        case .back:
+            tabManager.goBack()
+        case .retry:
+            if !tab.session.isOpen() {
+                tabManager.selectTab(at: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode)
+            } else {
+                tab.session.reload()
+            }
+        case let .openLink(url):
+            let index = tabManager.createTab(selecting: true, target: .afterSelected)
+            guard let tab = tabManager.activeTabs[safe: index] else {
+                return
+            }
+            tabManager.browse(to: url.absoluteString, in: tab)
+        case .acceptCertificate, .continueHTTP:
+            let succeeded = action == .acceptCertificate
+            ? tab.session.addCertException(for: loadError)
+            : tab.session.reloadWithHttpsOnlyException(for: loadError)
+            
+            if !succeeded {
+                let alert = UIAlertController(
+                    title: NSLocalizedString("Unable to Open Page", comment: ""),
+                    message: NSLocalizedString("Try Again", tableName: "WebContentErrorLocalizable", comment: ""),
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+                present(alert, animated: true)
+            }
+        }
     }
     
     func createNewTab(mode: TabMode? = nil) {

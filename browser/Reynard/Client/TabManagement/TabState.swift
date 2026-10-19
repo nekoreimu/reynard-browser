@@ -68,6 +68,7 @@ final class TabSessionState {
     var preparedNavigationThumbnailURL: String?
     var displayState: TabDisplayState = .committed
     var loadingState = TabLoadingState.idle
+    var loadError: WebRequestError?
     var isPlayingAudio = false
     var showsStartupHomepage = false
     var selectionOrder = 0

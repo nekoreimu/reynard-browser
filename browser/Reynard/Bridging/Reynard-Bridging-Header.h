@@ -13,6 +13,7 @@
 #import "JITEnabler.h"
 #import "UIKit+Private.h"
 #import "Utils.h"
+#import "WebRequestErrorBridge.h"
 #import <GeckoView/GeckoViewSwiftSupport.h>
 #import <GeckoView/IOSBootstrap.h>
 

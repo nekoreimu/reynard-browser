@@ -79,7 +79,7 @@ final class AddressBar: UIView {
         case hidden
         case search
         case menu
-        case loading
+        case disabled
     }
     
     private enum TrailingButtonState: Equatable {
@@ -125,6 +125,7 @@ final class AddressBar: UIView {
     private var currentLocationText: String?
     private var currentLocationTitle: String?
     private var canShowBarMenu = false
+    private var isErrorPage = false
     private var keyCommandHint: NSAttributedString?
     private var keyCommandHintTimer: Timer?
     
@@ -384,12 +385,14 @@ final class AddressBar: UIView {
         _ text: String?,
         locationText: String? = nil,
         locationTitle: String? = nil,
-        showsBarMenu: Bool = false
+        showsBarMenu: Bool = false,
+        isErrorPage: Bool = false
     ) {
         currentText = text?.trimmingCharacters(in: .whitespacesAndNewlines)
         currentLocationText = locationText?.trimmingCharacters(in: .whitespacesAndNewlines)
         currentLocationTitle = locationTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
         canShowBarMenu = showsBarMenu
+        self.isErrorPage = isErrorPage
         guard editingState == .inactive else {
             applyState()
             return
@@ -805,8 +808,9 @@ final class AddressBar: UIView {
     
     private func resolveLeadingButtonState(for content: ContentState) -> LeadingButtonState {
         guard editingState == .inactive else { return .hidden }
+        if isErrorPage { return .disabled }
         if isReaderActive { return .menu }
-        if case .loading = loadingState { return .loading }
+        if case .loading = loadingState { return .disabled }
         switch content {
         case .placeholder:
             return chromeMode == .phone && position == .bottom ? .search : .hidden
@@ -889,6 +893,7 @@ final class AddressBar: UIView {
     }
     
     private func applyLeadingButtonState(_ state: LeadingButtonState) {
+        leadingButton.isEnabled = state != .disabled
         guard state != .hidden else {
             leadingButton.isHidden = true
             leadingButton.setImage(nil, for: .normal)
@@ -906,7 +911,7 @@ final class AddressBar: UIView {
             return
         }
         
-        if state == .loading {
+        if state == .disabled {
             leadingButton.tintColor = .secondaryLabel
             leadingButton.setImage(UIImage(named: "reynard.list.bullet.below.rectangle"), for: .normal)
             leadingButton.setMenuPreservingPresentation(nil)

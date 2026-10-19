@@ -25,7 +25,8 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
             displayText?.isEmpty == false ? displayText : selectedURL,
             locationText: selectedURL,
             locationTitle: selectedTab?.title,
-            showsBarMenu: displayText?.isEmpty != false && selectedURL?.isEmpty == false
+            showsBarMenu: displayText?.isEmpty != false && selectedURL?.isEmpty == false,
+            isErrorPage: selectedTab?.state.loadError != nil
         )
         browserChrome.setAddressBarLoadingProgress(
             selectedTab?.state.loadingState.progress ?? 0,

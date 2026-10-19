@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index d91f21ba1ab2..13a7008c15fc 100644
+index d91f21ba1ab2..990b42781a49 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
 @@ -23,11 +23,77 @@
@@ -80,7 +80,7 @@ index d91f21ba1ab2..13a7008c15fc 100644
  @end
  
  @protocol GeckoProcessExtension <NSObject>
-@@ -35,38 +101,73 @@
+@@ -35,38 +101,80 @@
  @end
  
  @protocol EventCallback <NSObject>
@@ -137,6 +137,13 @@ index d91f21ba1ab2..13a7008c15fc 100644
 +- (void)dismissSoftwareKeyboard;
 +- (BOOL)focusForHardwareKeyboard;
 +- (BOOL)isInHardwareKeyboardMode;
++
++// Error pages
++- (nullable NSString*)errorPageURI;
++- (BOOL)addCertExceptionForPageURI:(NSString*)pageURI
++    NS_SWIFT_NAME(addCertException(pageURI:));
++- (BOOL)reloadWithHttpsOnlyExceptionForPageURI:(NSString*)pageURI
++    NS_SWIFT_NAME(reloadWithHttpsOnlyException(pageURI:));
 +
 +// Printing
 +- (void)printToPDFWithBrowsingContextId:(nullable NSNumber*)browsingContextId

@@ -66,6 +66,7 @@ enum TabManagerUpdateReason {
     case favicon
     case navigationState
     case loading
+    case loadError
     case thumbnail
     case pageBackgroundColor
     case readerMode

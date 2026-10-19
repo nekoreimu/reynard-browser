@@ -7,6 +7,7 @@
 
 import Foundation
 import GeckoView
+import Network
 import UIKit
 
 final class TabManagerImplementation: NSObject, TabManager {
@@ -60,6 +61,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     private let faviconStore: FaviconStore
     private let historyStore: HistoryStore
     let sessionManager: SessionManager
+    private let networkMonitor = NWPathMonitor()
     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
     private var selectionCounter = 0
     
@@ -85,6 +87,12 @@ final class TabManagerImplementation: NSObject, TabManager {
         self.faviconStore = faviconStore
         self.historyStore = historyStore
         super.init()
+        
+        networkMonitor.start(queue: .global(qos: .utility))
+    }
+    
+    deinit {
+        networkMonitor.cancel()
     }
     
     // MARK: - Application Lifecycle
@@ -179,6 +187,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     // MARK: - Navigation State
     
     private func loadURL(_ url: String, in tab: Tab) {
+        tab.state.loadError = nil
         tab.state.restoreState = .none
         tab.state.showsStartupHomepage = false
         tab.state.loadingState = .loading(progress: 0)
@@ -605,6 +614,8 @@ final class TabManagerImplementation: NSObject, TabManager {
         sessionManager.close(session)
         prepareRestoration(for: tab)
         tab.state.loadingState = .idle
+        tab.state.loadError = WebRequestError(kind: .contentCrashed, uri: displayedURL(for: tab))
+        notifyUpdate(at: location.index, mode: location.mode, reason: .loadError)
         notifyUpdate(at: location.index, mode: location.mode, reason: .loading)
         persistState()
         
@@ -1495,6 +1506,24 @@ extension TabManagerImplementation: NavigationDelegate {
             return
         }
         let tab = tabs(for: location.mode)[location.index]
+        
+        if let error = session.currentLoadError {
+            if error != tab.state.loadError {
+                _ = onLoadError(session: session, error: error)
+            }
+            scheduleHistoryNavigationCompletion(in: tab)
+            return
+        }
+        
+        if url == tab.state.loadError?.pageURI {
+            return
+        }
+        
+        if let error = tab.state.loadError, url != error.uri {
+            tab.state.loadError = nil
+            notifyUpdate(at: location.index, mode: location.mode, reason: .loadError)
+        }
+        
         let url = url.map { readerMode.displayedURL(for: $0, in: tab) }
         
         let normalizedURL = url?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1588,6 +1617,31 @@ extension TabManagerImplementation: NavigationDelegate {
     
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
         return .allow
+    }
+    
+    func onLoadError(session: GeckoSession, error: WebRequestError) -> String? {
+        guard let location = tabLocation(for: session) else {
+            return nil
+        }
+        
+        let tab = tabs(for: location.mode)[location.index]
+        var error = error
+        if error.kind == .unknownHost, networkMonitor.currentPath.status != .satisfied {
+            error.kind = .noInternet
+        }
+        
+        tab.state.loadError = error
+        tab.state.loadingState = .idle
+        tab.state.showsStartupHomepage = false
+        
+        if let uri = error.uri, !uri.isEmpty {
+            tab.url = uri
+            tab.state.displayState = .committed
+        }
+        
+        notifyUpdate(at: location.index, mode: location.mode, reason: .loadError)
+        notifyUpdate(at: location.index, mode: location.mode, reason: .loading)
+        return error.pageURI
     }
     
     func onNewSession(session: GeckoSession, uri: String, windowId: String, target: LoadRequestTarget) async -> GeckoSession? {
@@ -1700,6 +1754,11 @@ extension TabManagerImplementation: ProgressDelegate {
             return
         }
         let tab = tabs(for: location.mode)[location.index]
+        
+        if url == tab.state.loadError?.pageURI {
+            return
+        }
+        
         systemMediaSession.navigationStarted(
             in: session,
             preservingPlayback: tab.isMuted && tab.state.isPlayingAudio && tab.url == url
@@ -1709,6 +1768,11 @@ extension TabManagerImplementation: ProgressDelegate {
            hasDisplayURL(for: tab) {
             tab.state.isSuppressingInitialBlankPageLoad = true
             return
+        }
+        
+        if tab.state.loadError != nil {
+            tab.state.loadError = nil
+            notifyUpdate(at: location.index, mode: location.mode, reason: .loadError)
         }
         
         sessionManager.trackingProtection.clearBlockedTrackers(for: session)
@@ -1730,6 +1794,10 @@ extension TabManagerImplementation: ProgressDelegate {
             return
         }
         let tab = tabs(for: location.mode)[location.index]
+        
+        if let error = session.currentLoadError, error != tab.state.loadError {
+            _ = onLoadError(session: session, error: error)
+        }
         
         if tab.state.isSuppressingInitialBlankPageLoad {
             tab.state.isSuppressingInitialBlankPageLoad = false

@@ -67,6 +67,7 @@ public protocol NavigationDelegate {
     func onLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny
     func onPreNavigation(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny
+    func onLoadError(session: GeckoSession, error: WebRequestError) -> String?
     func onNewSession(
         session: GeckoSession,
         uri: String,
@@ -82,6 +83,7 @@ extension NavigationDelegate {
     public func onLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny { .allow }
     public func onPreNavigation(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny { .allow }
     public func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny { .allow }
+    public func onLoadError(session: GeckoSession, error: WebRequestError) -> String? { nil }
     public func onNewSession(session: GeckoSession, uri: String, windowId: String, target: LoadRequestTarget) async -> GeckoSession? { nil }
 }
 
@@ -157,7 +159,7 @@ func newNavigationHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             return false
             
         case .onLoadError:
-            return nil
+            return delegate?.onLoadError(session: session, error: WebRequestError(message: message))
             
         case .onLoadRequest:
             guard let request = loadRequest(from: message) else {

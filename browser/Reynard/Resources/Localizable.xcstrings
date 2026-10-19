@@ -201,7 +201,7 @@
       "localizations" : {
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@ again to %2$@…"
           }
         }
@@ -2553,135 +2553,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reynard 瀏覽器已有新版本。請開啟「設定」進行更新。"
-          }
-        }
-      }
-    },
-    "A problem occurred on “%@”." : {
-      "comment" : "Webpage URL",
-      "localizations" : {
-        "cs" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se stránkou „%@“ se vyskytl problém."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bei „%@“ ist ein Problem aufgetreten."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A problem occurred on “%@”."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un problème est survenu sur \"%@\""
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@で問題が発生しました。"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wystąpił problem w \"%@\"."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "На \"%@\" произошла ошибка"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã xảy ra sự cố trên “%@”."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@”发生了一个错误。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "「%@」發生問題。"
-          }
-        }
-      }
-    },
-    "A problem occurred on this webpage." : {
-      "localizations" : {
-        "cs" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "S touto stránkou se vyskytl problém."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Problem ist auf dieser Seite aufgetreten."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A problem occurred on this webpage."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Un problème est survenu sur cette page."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このウェブページで問題が発生しました。\n"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wystąpił problem na tej stronie internetowej."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "На данной странице произошла ошибка"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đã xảy ra sự cố với trang web này."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "该网页上发生错误。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此網頁發生問題。"
           }
         }
       }
@@ -19520,6 +19391,16 @@
         }
       }
     },
+    "Page Stopped Working" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page Stopped Working"
+          }
+        }
+      }
+    },
     "Page Zoom" : {
       "localizations" : {
         "cs" : {
@@ -21954,6 +21835,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新開啟上次關閉的標籤頁"
+          }
+        }
+      }
+    },
+    "report the problem" : {
+      "comment" : "Inline link in the Page Stopped Working message",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "report the problem"
           }
         }
       }
@@ -27022,6 +26914,17 @@
         }
       }
     },
+    "The page stopped working unexpectedly.\n\nTry reloading the page. If this keeps happening, please %@." : {
+      "comment" : "Link to report the problem",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The page stopped working unexpectedly.\n\nTry reloading the page. If this keeps happening, please %@."
+          }
+        }
+      }
+    },
     "The required Developer Disk Image files for enabling JIT were not found.\n\nJIT has been disabled. Quit the app using the button below, then re-enable JIT from the browser settings." : {
       "comment" : "Paragraph break intentional",
       "localizations" : {
@@ -28241,6 +28144,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法存取 App 的「Application Support」資料夾。"
+          }
+        }
+      }
+    },
+    "Unable to Open Page" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unable to Open Page"
           }
         }
       }

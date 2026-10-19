@@ -1,0 +1,15 @@
+diff --git a/dom/ipc/ProcessIsolation.cpp b/dom/ipc/ProcessIsolation.cpp
+index a1b725eafb33..4c650b41870b 100644
+--- a/dom/ipc/ProcessIsolation.cpp
++++ b/dom/ipc/ProcessIsolation.cpp
+@@ -706,8 +706,8 @@ Result<NavigationIsolationOptions, nsresult> IsolationOptionsForNavigation(
+     }
+   }
+ 
+-#ifdef MOZ_WIDGET_ANDROID
+-  // If we're loading an error page on android, it must complete within the same
++#if defined(MOZ_WIDGET_ANDROID) || defined(XP_IOS)
++  // If we're loading an error page on mobile, it must complete within the same
+   // process as the errored page load would complete in due to code expecting
+   // that behavior. See bug 1673763.
+   if (aLoadStateLoadType == LOAD_ERROR_PAGE) {

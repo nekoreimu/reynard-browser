@@ -226,6 +226,7 @@ enum ApplicationMenuBuilder {
             return
         }
         
+        builder.remove(menu: .preferences)
         builder.remove(menu: .close)
         builder.remove(menu: .find)
         builder.remove(menu: .textSize)

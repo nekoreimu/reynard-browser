@@ -330,8 +330,34 @@ public class GeckoSession {
         dispatcher.dispatch(type: "GeckoView:PurgeHistory")
     }
     
+    // MARK: - Full screen
+    
     public func exitFullScreen() {
         dispatcher.dispatch(type: "GeckoViewContent:ExitFullScreen")
+    }
+    
+    // MARK: - Error Pages
+    
+    public var currentLoadError: WebRequestError? {
+        return window?.errorPageURI().flatMap(WebRequestError.init(pageURI:))
+    }
+    
+    public func addCertException(for error: WebRequestError) -> Bool {
+        guard error.kind == .securityBadCertificate,
+              window?.addCertException(pageURI: error.pageURI) == true else {
+            return false
+        }
+        
+        reload()
+        return true
+    }
+    
+    public func reloadWithHttpsOnlyException(for error: WebRequestError) -> Bool {
+        guard error.kind == .httpsOnly else {
+            return false
+        }
+        
+        return window?.reloadWithHttpsOnlyException(pageURI: error.pageURI) == true
     }
     
     // MARK: - Image Loading

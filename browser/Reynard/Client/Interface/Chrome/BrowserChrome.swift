@@ -501,13 +501,15 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         _ text: String?,
         locationText: String?,
         locationTitle: String?,
-        showsBarMenu: Bool
+        showsBarMenu: Bool,
+        isErrorPage: Bool
     ) {
         addressBar.setText(
             text,
             locationText: locationText,
             locationTitle: locationTitle,
-            showsBarMenu: showsBarMenu
+            showsBarMenu: showsBarMenu,
+            isErrorPage: isErrorPage
         )
         _ = updateToolbarTextTransition(textCenterProgress: toolbarTextCenterProgress)
     }

@@ -1,5 +1,5 @@
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 5be2ef463856..f944815b413d 100644
+index 5be2ef463856..3ee3677e81c4 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
 @@ -2337,6 +2337,48 @@ nsDocShell::ClearCachedUserAgent() {
@@ -51,7 +51,7 @@ index 5be2ef463856..f944815b413d 100644
  /* virtual */
  int32_t nsDocShell::ItemType() { return mItemType; }
  
-@@ -5673,24 +5715,36 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+@@ -5673,23 +5715,35 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
    return NS_OK;
  }
  
@@ -76,24 +76,23 @@ index 5be2ef463856..f944815b413d 100644
    if (!oldURI || !newURI) {
 -    return;
 +    return NS_OK;
-   }
- 
++  }
++
 +  nsCOMPtr<nsILoadInfo> loadInfo = aNewChannel->LoadInfo();
 +  nsCOMPtr<nsIPrincipal> triggeringPrincipal;
 +  bool loadTriggeredFromExternal = false;
 +  if (loadInfo) {
 +    loadInfo->GetTriggeringPrincipal(getter_AddRefs(triggeringPrincipal));
 +    loadInfo->GetLoadTriggeredFromExternal(&loadTriggeredFromExternal);
-+  }
+   }
 +  MOZ_TRY(MaybeHandlePreNavigation(
 +      newURI, nsIWebNavigation::LOAD_FLAGS_IS_REDIRECT, mLoadType,
 +      triggeringPrincipal,
 +      loadInfo && loadInfo->GetHasValidUserGestureActivation(),
 +      loadTriggeredFromExternal));
-+
+ 
    // DocumentChannel adds redirect chain to global history in the parent
    // process. The redirect chain can't be queried from the content process, so
-   // there's no need to update global history here.
 @@ -5738,6 +5792,8 @@ void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
        mLoadType & (LOAD_CMD_RELOAD | LOAD_CMD_HISTORY)) {
      mLoadType = LOAD_NORMAL_REPLACE;
@@ -103,7 +102,19 @@ index 5be2ef463856..f944815b413d 100644
  }
  
  NS_IMETHODIMP
-@@ -8524,6 +8580,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
+@@ -7147,6 +7203,11 @@ nsresult nsDocShell::CreateDocumentViewer(const nsACString& aContentType,
+   NS_ENSURE_SUCCESS(Embed(viewer, nullptr, false, aOpenedChannel, previousURI),
+                     NS_ERROR_FAILURE);
+ 
++  // Retry failed requests on history navigation instead of restoring error pages.
++  if (Document* doc = viewer->GetDocument(); doc && mLoadType == LOAD_ERROR_PAGE) {
++    doc->DisallowBFCaching();
++  }
++
+   if (!mBrowsingContext->GetHasLoadedNonInitialDocument()) {
+     MOZ_ALWAYS_SUCCEEDS(mBrowsingContext->SetHasLoadedNonInitialDocument(true));
+   }
+@@ -8524,6 +8585,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
    }
  }
  
@@ -145,7 +156,7 @@ index 5be2ef463856..f944815b413d 100644
  // InternalLoad performs several of the steps from
  // https://html.spec.whatwg.org/#navigate.
  nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
-@@ -8577,6 +8668,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -8577,6 +8673,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
  
    MOZ_TRY(CheckDisallowedJavascriptLoad(aLoadState));
  
@@ -161,7 +172,7 @@ index 5be2ef463856..f944815b413d 100644
    // If we don't have a target, we're loading into ourselves, and our load
    // delegate may want to intercept that load.
    SameDocumentNavigationState sameDocumentNavigationState;
-@@ -12254,6 +12354,15 @@ nsresult nsDocShell::OnLinkClick(
+@@ -12254,6 +12359,15 @@ nsresult nsDocShell::OnLinkClick(
  
    bool noOpenerImplied = false;
    nsAutoString target(aTargetSpec);

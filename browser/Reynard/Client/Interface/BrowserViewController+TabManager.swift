@@ -42,7 +42,7 @@ extension BrowserViewController: TabManagerDelegate {
         }
         
         toolbarController.reset()
-        contentView.showPageError(for: tab.url)
+        contentView.updateLoadError(for: tab)
         captureThumbnail(
             forTabAt: tabManager.selectedTabIndex,
             mode: tabManager.selectedTabMode
@@ -207,6 +207,15 @@ extension BrowserViewController: TabManagerDelegate {
         case .navigationState:
             if index == tabManager.selectedTabIndex {
                 updateNavigationButtons()
+                contentView.updateLoadError(for: tab)
+            }
+            
+        case .loadError:
+            if index == tabManager.selectedTabIndex {
+                contentView.updateLoadError(for: tab)
+                refreshAddressBar()
+                homepageOverlayCoordinator.updatePresentation(animated: false)
+                toolbarController.reset()
             }
             
         case .loading:
@@ -217,6 +226,7 @@ extension BrowserViewController: TabManagerDelegate {
                 )
                 
                 if tab.state.loadingState.isLoading {
+                    contentView.updateLoadError(for: tab)
                     contentView.resetScrollTracking()
                     toolbarController.lock(for: .pageNavigation)
                 } else {
