@@ -481,23 +481,25 @@ static NSURL *ddiDirectoryURL(NSError **error) {
     return [applicationSupportDirectory URLByAppendingPathComponent:@"DDI" isDirectory:YES];
 }
 
-static BOOL isLegacyDDIMounted(DeviceProvider *provider, BOOL *mountedOut) {
+static BOOL isLegacyDDIMounted(DeviceProvider *provider, BOOL *mountedOut, NSError **error) {
     ImageMounterHandle *mounterClient = NULL;
     plist_t *devices = NULL;
     size_t deviceCount = 0;
     IdeviceFfiError *ffiError = image_mounter_connect_rsd(provider->adapter, provider->handshake, &mounterClient);
     if (ffiError) {
+        if (error) *error = MakeError(ImageMounterConnectFailed);
         idevice_error_free(ffiError);
         return NO;
     }
     
     ffiError = image_mounter_copy_devices(mounterClient, &devices, &deviceCount);
     if (ffiError) {
+        if (error) *error = MakeError(DDIMountStateQueryFailed);
         idevice_error_free(ffiError);
         image_mounter_free(mounterClient);
         return NO;
     }
-
+    
     if (devices) {
         for (size_t index = 0; index < deviceCount; index++) {
             if (devices[index]) plist_free(devices[index]);
@@ -510,6 +512,72 @@ static BOOL isLegacyDDIMounted(DeviceProvider *provider, BOOL *mountedOut) {
     return YES;
 }
 
+static NSData *ddiFileData(NSURL *ddiDirectory, NSString *fileName, NSError **error) {
+    NSURL *fileURL = [ddiDirectory URLByAppendingPathComponent:fileName isDirectory:NO];
+    NSData *data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:NULL];
+    if (!data || data.length == 0) {
+        if (error) *error = MakeError(DDIFileReadFailed);
+        return nil;
+    }
+    return data;
+}
+
+static BOOL mountPersonalizedDDI(DeviceProvider *provider, NSURL *ddiDirectory, NSError **error) {
+    NSData *imageData = ddiFileData(ddiDirectory, @"Image.dmg", error);
+    if (!imageData) return NO;
+    
+    NSData *trustCacheData = ddiFileData(ddiDirectory, @"Image.dmg.trustcache", error);
+    if (!trustCacheData) return NO;
+    
+    NSData *manifestData = ddiFileData(ddiDirectory, @"BuildManifest.plist", error);
+    if (!manifestData) return NO;
+    
+    LockdowndClientHandle *lockdownClient = NULL;
+    ImageMounterHandle *mounterClient = NULL;
+    plist_t chipIDNode = NULL;
+    uint64_t uniqueChipID = 0;
+    BOOL success = NO;
+    
+    IdeviceFfiError *ffiError = lockdownd_connect_rsd(provider->adapter, provider->handshake, &lockdownClient);
+    if (ffiError) {
+        if (error) *error = MakeError(LockdowndConnectFailed);
+        goto cleanup;
+    }
+    
+    ffiError = lockdownd_get_value(lockdownClient, "UniqueChipID", NULL, &chipIDNode);
+    if (ffiError) {
+        if (error) *error = MakeError(UniqueChipIDReadFailed);
+        goto cleanup;
+    }
+    
+    if (chipIDNode) plist_get_uint_val(chipIDNode, &uniqueChipID);
+    if (uniqueChipID == 0) {
+        if (error) *error = MakeError(UniqueChipIDInvalid);
+        goto cleanup;
+    }
+    
+    ffiError = image_mounter_connect_rsd(provider->adapter, provider->handshake, &mounterClient);
+    if (ffiError) {
+        if (error) *error = MakeError(ImageMounterConnectFailed);
+        goto cleanup;
+    }
+    
+    ffiError = image_mounter_mount_personalized_rsd(mounterClient, provider->adapter, provider->handshake, imageData.bytes, imageData.length, trustCacheData.bytes, trustCacheData.length, manifestData.bytes, manifestData.length, NULL, uniqueChipID);
+    if (ffiError) {
+        if (error) *error = MakeError(ModernDDIMountFailed);
+        goto cleanup;
+    }
+    
+    success = YES;
+    
+cleanup:
+    if (ffiError) idevice_error_free(ffiError);
+    if (chipIDNode) plist_free(chipIDNode);
+    if (mounterClient) image_mounter_free(mounterClient);
+    if (lockdownClient) lockdownd_client_free(lockdownClient);
+    return success;
+}
+
 BOOL ensureDDIMounted(DeviceProvider *provider, NSError **error) {
     if (!provider || !provider->adapter || !provider->handshake) {
         if (error) *error = MakeError(DeviceProviderCreateFailed);
@@ -520,27 +588,39 @@ BOOL ensureDDIMounted(DeviceProvider *provider, NSError **error) {
     Cryptex1AssetsHandle *assets = NULL;
     IdeviceFfiError *queryError = NULL;
     NSURL *ddiDirectory = nil;
+    NSError *legacyError = nil;
+    BOOL usesCryptexDDI = NO;
+    BOOL cryptexQuerySucceeded = NO;
     BOOL legacyMounted = NO;
     BOOL success = NO;
     
-    queryError = cryptexd_installed_ddi(provider->adapter, provider->handshake, &installedCryptex);
-    if (installedCryptex) {
-        success = YES;
-        goto cleanup;
+    if (@available(iOS 26.4, *)) {
+        usesCryptexDDI = YES;
+        queryError = cryptexd_installed_ddi(provider->adapter, provider->handshake, &installedCryptex);
+        cryptexQuerySucceeded = queryError == NULL;
+        if (cryptexQuerySucceeded && installedCryptex) {
+            success = YES;
+            goto cleanup;
+        }
     }
     
-    if (isLegacyDDIMounted(provider, &legacyMounted) && legacyMounted) {
-        success = YES;
-        goto cleanup;
-    }
-    
-    if (queryError) {
-        if (error) *error = MakeError(DDIMountStateQueryFailed);
+    if (isLegacyDDIMounted(provider, &legacyMounted, &legacyError)) {
+        if (legacyMounted) {
+            success = YES;
+            goto cleanup;
+        }
+    } else if (!cryptexQuerySucceeded) {
+        if (error) *error = queryError ? MakeError(DDIMountStateQueryFailed) : legacyError;
         goto cleanup;
     }
     
     ddiDirectory = ddiDirectoryURL(error);
     if (!ddiDirectory) goto cleanup;
+    
+    if (!usesCryptexDDI) {
+        success = mountPersonalizedDDI(provider, ddiDirectory, error);
+        goto cleanup;
+    }
     
     IdeviceFfiError *ffiError = cryptex1_assets_load(ddiDirectory.fileSystemRepresentation, &assets);
     if (ffiError) {
@@ -695,7 +775,7 @@ static void postEndpointConnectivityFailure(NSNumber *pid, NSString *targetAddre
     if (error) userInfo[@"error"] = error;
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"me-minh-ton.jit.endpoint-monitor-failed" object:nil userInfo:userInfo];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"JIT.EndpointMonitorDidFail" object:nil userInfo:userInfo];
     });
 }
 

@@ -1810,6 +1810,10 @@ extension TabManagerImplementation: ProgressDelegate {
         delegate?.tabManager(self, didFinishLoading: session)
     }
     
+    func onReloadCancelled(session: GeckoSession) {
+        delegate?.tabManager(self, didFinishLoading: session)
+    }
+    
     func onProgressChange(session: GeckoSession, progress: Int) {
         guard let location = tabLocation(for: session) else {
             return

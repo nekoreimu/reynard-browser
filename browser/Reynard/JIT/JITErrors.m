@@ -63,7 +63,7 @@ NSString *ErrorDescription(ErrorCode code) {
         case UniqueChipIDInvalid:
             return @"UniqueChipID value is invalid.";
         case ModernDDIMountFailed:
-            return @"Failed to install DDI cryptex.";
+            return @"Failed to mount Developer Disk Image.";
         case EndpointConnectivityLost:
             return @"Lost TCP connectivity to the JIT debug endpoint.";
         case TunnelCreateFailed:

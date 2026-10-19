@@ -37,6 +37,7 @@ final class DDIManager: NSObject {
     
     private struct DownloadPlan {
         let rootDirectoryURL: URL
+        let mountMethod: String
         let items: [DownloadItem]
     }
     
@@ -68,6 +69,12 @@ final class DDIManager: NSObject {
             return false
         }
         
+        let mountMethodURL = plan.rootDirectoryURL.appendingPathComponent("MountMethod")
+        let installedMethod = try? String(contentsOf: mountMethodURL, encoding: .utf8)
+        guard installedMethod == plan.mountMethod else {
+            return false
+        }
+        
         return plan.items.allSatisfy { fileManager.fileExists(atPath: $0.destinationURL.path) }
     }
     
@@ -91,6 +98,7 @@ final class DDIManager: NSObject {
             
             do {
                 let plan = try self.makeDownloadPlan()
+                try self.removeDDIRootDirectory()
                 try self.ensureDDIRootDirectoryExists(at: plan.rootDirectoryURL)
                 
                 self.activeDownload = ActiveDownload(
@@ -127,7 +135,13 @@ final class DDIManager: NSObject {
         }
         
         guard active.currentIndex < active.plan.items.count else {
-            finishActiveDownloadLocked(result: .success(()), shouldCleanup: false)
+            do {
+                let mountMethodURL = active.plan.rootDirectoryURL.appendingPathComponent("MountMethod")
+                try active.plan.mountMethod.write(to: mountMethodURL, atomically: true, encoding: .utf8)
+                finishActiveDownloadLocked(result: .success(()), shouldCleanup: false)
+            } catch {
+                finishActiveDownloadLocked(result: .failure(error), shouldCleanup: false)
+            }
             return
         }
         
@@ -157,6 +171,12 @@ final class DDIManager: NSObject {
         guard var active = activeDownload,
               let task = active.currentTask,
               task.taskIdentifier == taskIdentifier else {
+            return
+        }
+        
+        guard let response = task.response as? HTTPURLResponse,
+              (200..<300).contains(response.statusCode) else {
+            finishActiveDownloadLocked(result: .failure(URLError(.badServerResponse)), shouldCleanup: false)
             return
         }
         
@@ -278,18 +298,23 @@ final class DDIManager: NSObject {
     
     private func makeDownloadPlan() throws -> DownloadPlan {
         let rootDirectoryURL = try ddiRootDirectoryURL()
-        let baseURLString = "https://github.com/doronz88/DeveloperDiskImage/raw/refs/heads/main/PersonalizedImages/Xcode_iOS_DDI_Cryptex"
+        let mountMethod: String
+        let imageDirectory: String
+        var fileNames = ["BuildManifest.plist", "Image.dmg", "Image.dmg.trustcache"]
+        if #available(iOS 26.4, *) {
+            mountMethod = "cryptex"
+            imageDirectory = "Xcode_iOS_DDI_Cryptex"
+            fileNames += ["Image.dmg.cryptex_info", "Image.dmg.root_hash"]
+        } else {
+            mountMethod = "personalized"
+            imageDirectory = "Xcode_iOS_DDI_Personalized"
+        }
+        
+        let baseURLString = "https://github.com/doronz88/DeveloperDiskImage/raw/refs/heads/main/PersonalizedImages/\(imageDirectory)"
         guard let baseURL = URL(string: baseURLString) else {
             throw DDIError.invalidRemoteURL
         }
         
-        let fileNames = [
-            "BuildManifest.plist",
-            "Image.dmg",
-            "Image.dmg.trustcache",
-            "Image.dmg.cryptex_info",
-            "Image.dmg.root_hash"
-        ]
         let items = fileNames.map { fileName in
             DownloadItem(
                 remoteURL: baseURL.appendingPathComponent(fileName),
@@ -297,7 +322,7 @@ final class DDIManager: NSObject {
             )
         }
         
-        return DownloadPlan(rootDirectoryURL: rootDirectoryURL, items: items)
+        return DownloadPlan(rootDirectoryURL: rootDirectoryURL, mountMethod: mountMethod, items: items)
     }
     
     private func ddiRootDirectoryURL() throws -> URL {

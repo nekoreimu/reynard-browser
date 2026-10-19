@@ -41,11 +41,12 @@ final class JITController {
     }
     
     func start() {
-        guard usePtraceJIT() || !isDDIMissing() else {
-            hasHandledFailure = true
-            presentMissingDDIFailureScreen()
-            return
-        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleApplicationDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
         
         NotificationCenter.default.addObserver(
             self,
@@ -59,12 +60,12 @@ final class JITController {
             name: .jitEndpointMonitorDidFail,
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleApplicationDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
+        
+        guard usePtraceJIT() || !isDDIMissing() else {
+            hasHandledFailure = true
+            presentMissingDDIFailureScreen()
+            return
+        }
     }
     
     private func isDDIMissing() -> Bool {

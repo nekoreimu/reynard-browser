@@ -12,6 +12,7 @@ import Foundation
 public protocol ProgressDelegate {
     func onPageStart(session: GeckoSession, url: String)
     func onPageStop(session: GeckoSession, success: Bool)
+    func onReloadCancelled(session: GeckoSession)
     func onProgressChange(session: GeckoSession, progress: Int)
     func onSessionStateChange(session: GeckoSession, sessionState: GeckoSessionState)
 }
@@ -19,6 +20,7 @@ public protocol ProgressDelegate {
 extension ProgressDelegate {
     public func onPageStart(session: GeckoSession, url: String) {}
     public func onPageStop(session: GeckoSession, success: Bool) {}
+    public func onReloadCancelled(session: GeckoSession) {}
     public func onProgressChange(session: GeckoSession, progress: Int) {}
     public func onSessionStateChange(session: GeckoSession, sessionState: GeckoSessionState) {}
 }

@@ -202,6 +202,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         currentScrollY = 0
         refreshingSession = nil
         pullToRefreshRecognizer?.cancelPull()
+        cancelRefreshPresentation()
         webView.session = tab?.session
     }
     
@@ -225,6 +226,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         } else if let pullToRefreshRecognizer {
             refreshingSession = nil
             pullToRefreshRecognizer.cancelPull()
+            cancelRefreshPresentation()
             webView.removeGestureRecognizer(pullToRefreshRecognizer)
             self.pullToRefreshRecognizer = nil
         }
@@ -316,10 +318,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     @objc private func handlePullToRefresh(_ recognizer: PullToRefreshGestureRecognizer) {
         switch recognizer.state {
         case .began, .changed:
-            updatePullPresentation(
-                progress: recognizer.progress,
-                pullDistance: recognizer.pullDistance
-            )
+            updatePullPresentation(pullDistance: recognizer.pullDistance)
         case .ended where recognizer.progress >= 1:
             guard refreshingSession == nil,
                   let session = webView.session else {
@@ -338,12 +337,14 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         }
     }
     
-    private func updatePullPresentation(progress: CGFloat, pullDistance: CGFloat) {
+    private func updatePullPresentation(pullDistance: CGFloat) {
         let viewportHeight = max(bounds.height, 1)
         let rubberBandDistance = UX.rubberBandCoefficient * pullDistance
         let contentOffset = rubberBandDistance * viewportHeight / (viewportHeight + rubberBandDistance)
+        let indicatorHeight = refreshIndicator.intrinsicContentSize.height
+        let opacity = (contentOffset - indicatorHeight) / (UX.refreshingContentOffset - indicatorHeight)
         setRefreshIndicatorProgress(contentOffset / UX.refreshingContentOffset)
-        refreshIndicatorContainer.alpha = progress
+        refreshIndicatorContainer.alpha = min(max(opacity, 0), 1)
         webView.transform = CGAffineTransform(translationX: 0, y: contentOffset)
     }
     
@@ -541,9 +542,20 @@ private final class PullToRefreshGestureRecognizer: UIGestureRecognizer {
         return state == .began || state == .changed
     }
     
+    override func reset() {
+        super.reset()
+        activeInputSequenceID = nil
+        isPullApproved = false
+        isTrackingTrackpadScroll = false
+    }
+    
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard !isAwaitingRefreshCompletion,
-              let touch = validSingleTouch(in: touches, event: event) else {
+        guard !isAwaitingRefreshCompletion else {
+            state = .failed
+            return
+        }
+        
+        guard let touch = validSingleTouch(in: touches, event: event) else {
             return
         }
         
@@ -614,7 +626,8 @@ private final class PullToRefreshGestureRecognizer: UIGestureRecognizer {
     }
     
     func resolveInputSequence(_ result: PullInputResult) {
-        guard state == .possible,
+        guard !isAwaitingRefreshCompletion,
+              state == .possible,
               result.sequenceID == activeInputSequenceID else {
             return
         }
