@@ -1,0 +1,41 @@
+diff --git a/dom/gamepad/ipc/GamepadEventChannelParent.h b/dom/gamepad/ipc/GamepadEventChannelParent.h
+index 84d3956054ec..e9cbf0ae9215 100644
+--- a/dom/gamepad/ipc/GamepadEventChannelParent.h
++++ b/dom/gamepad/ipc/GamepadEventChannelParent.h
+@@ -6,6 +6,12 @@
+ #define mozilla_dom_GamepadEventChannelParent_h_
+ #include "mozilla/dom/PGamepadEventChannelParent.h"
+ 
++#ifdef MOZ_WIDGET_UIKIT
++#  include <map>
++
++#  include "mozilla/dom/GamepadMonitoring.h"
++#endif
++
+ namespace mozilla::dom {
+ 
+ class GamepadEventChannelParent final : public PGamepadEventChannelParent {
+@@ -18,9 +24,10 @@ class GamepadEventChannelParent final : public PGamepadEventChannelParent {
+   mozilla::ipc::IPCResult RecvVibrateHaptic(
+       const Tainted<GamepadHandle>& aHandle,
+       const Tainted<uint32_t>& aHapticIndex, const Tainted<double>& aIntensity,
+-      const Tainted<double>& aDuration, const uint32_t& aPromiseID);
++      const Tainted<double>& aDuration, const uint64_t& aWindowId,
++      const uint32_t& aPromiseID);
+   mozilla::ipc::IPCResult RecvStopVibrateHaptic(
+-      const Tainted<GamepadHandle>& aHandle);
++      const Tainted<GamepadHandle>& aHandle, const uint64_t& aWindowId);
+   mozilla::ipc::IPCResult RecvLightIndicatorColor(
+       const Tainted<GamepadHandle>& aHandle,
+       const Tainted<uint32_t>& aLightColorIndex, const uint8_t& aRed,
+@@ -42,6 +49,10 @@ class GamepadEventChannelParent final : public PGamepadEventChannelParent {
+ 
+   bool mIsShutdown;
+   nsCOMPtr<nsIEventTarget> mBackgroundEventTarget;
++#ifdef MOZ_WIDGET_UIKIT
++  std::map<uint32_t, MozPromiseRequestHolder<GamepadOutputPromise>>
++      mOutputRequests;
++#endif
+ };
+ 
+ }  // namespace mozilla::dom

@@ -135,7 +135,48 @@ final class BookmarkStore {
         }
     }
     
+    // MARK: - Data Import and Export
+    
+    func performBookmarkDataOperation<Value: Sendable>(
+        _ operation: @escaping @Sendable (OpaquePointer) throws -> Value
+    ) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            stateQueue.async {
+                guard let database = self.database else {
+                    continuation.resume(throwing: BookmarkDataError.databaseUnavailable)
+                    return
+                }
+                
+                continuation.resume(with: Result { try operation(database) })
+            }
+        }
+    }
+    
     // MARK: - Bookmarks
+    
+    func bookmarkCount() async -> Int? {
+        await withCheckedContinuation { continuation in
+            stateQueue.async {
+                guard let statement = self.prepareStatementLocked("SELECT COUNT(*) FROM bookmarks WHERE type = ?;") else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                defer {
+                    sqlite3_finalize(statement)
+                }
+                
+                guard sqlite3_bind_int64(statement, 1, BookmarkNodeType.bookmark.rawValue) == SQLITE_OK,
+                      sqlite3_step(statement) == SQLITE_ROW else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                let count = Int(sqlite3_column_int64(statement, 0))
+                continuation.resume(returning: count)
+            }
+        }
+    }
     
     func bookmarks(matchingPrefix query: String, limit: Int) -> [BookmarkSnapshot] {
         stateQueue.sync {

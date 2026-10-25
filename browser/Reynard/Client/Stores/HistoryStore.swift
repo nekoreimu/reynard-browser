@@ -73,7 +73,42 @@ final class HistoryStore {
         }
     }
     
+    // MARK: - Data Import
+    
+    func performHistoryImport(
+        _ operation: @escaping @Sendable () throws -> HistoryImportReport
+    ) async throws -> HistoryImportReport {
+        try await withCheckedThrowingContinuation { continuation in
+            stateQueue.async {
+                continuation.resume(with: Result { try operation() })
+            }
+        }
+    }
+    
     // MARK: - History
+    
+    func siteCount() async -> Int? {
+        await withCheckedContinuation { continuation in
+            stateQueue.async {
+                guard let statement = self.prepareStatementLocked("SELECT COUNT(*) FROM history;") else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                defer {
+                    sqlite3_finalize(statement)
+                }
+                
+                guard sqlite3_step(statement) == SQLITE_ROW else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                
+                let count = Int(sqlite3_column_int64(statement, 0))
+                continuation.resume(returning: count)
+            }
+        }
+    }
     
     func currentSnapshot(limit: Int, offset: Int) -> HistoryStoreSnapshot {
         stateQueue.sync {

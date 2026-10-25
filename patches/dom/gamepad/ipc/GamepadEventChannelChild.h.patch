@@ -1,0 +1,18 @@
+diff --git a/dom/gamepad/ipc/GamepadEventChannelChild.h b/dom/gamepad/ipc/GamepadEventChannelChild.h
+index d53940725fde..8e9c9bedf8b9 100644
+--- a/dom/gamepad/ipc/GamepadEventChannelChild.h
++++ b/dom/gamepad/ipc/GamepadEventChannelChild.h
+@@ -17,10 +17,12 @@ class GamepadEventChannelChild final : public PGamepadEventChannelChild {
+   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(GamepadEventChannelChild, override)
+ 
+   static already_AddRefed<GamepadEventChannelChild> Create();
++  void ActorDestroy(ActorDestroyReason aWhy) override;
+ 
+   mozilla::ipc::IPCResult RecvGamepadUpdate(
+       const GamepadChangeEvent& aGamepadEvent);
+-  mozilla::ipc::IPCResult RecvReplyGamepadPromise(const uint32_t& aPromiseID);
++  mozilla::ipc::IPCResult RecvReplyGamepadPromise(const uint32_t& aPromiseID,
++                                                  const bool& aSuccess);
+   void AddPromise(const uint32_t& aID, dom::Promise* aPromise);
+ 
+   GamepadEventChannelChild(const GamepadEventChannelChild&) = delete;

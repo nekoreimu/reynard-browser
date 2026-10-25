@@ -1,0 +1,1046 @@
+diff --git a/widget/uikit/GeckoGamepadSupport.mm b/widget/uikit/GeckoGamepadSupport.mm
+new file mode 100644
+index 000000000000..962b3967a970
+--- /dev/null
++++ b/widget/uikit/GeckoGamepadSupport.mm
+@@ -0,0 +1,1040 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import <CoreHaptics/CoreHaptics.h>
++#import <GameController/GameController.h>
++#import <UIKit/UIKit.h>
++
++#include <array>
++#include <cmath>
++#include <map>
++#include <utility>
++
++#include "mozilla/DataMutex.h"
++#include "mozilla/Maybe.h"
++#include "mozilla/RefPtr.h"
++#include "mozilla/dom/GamepadEventChannelParent.h"
++#include "mozilla/dom/GamepadMonitoring.h"
++#include "mozilla/dom/GamepadPlatformService.h"
++#include "mozilla/dom/GamepadPoseState.h"
++#include "mozilla/dom/GamepadRemapping.h"
++#include "mozilla/dom/GamepadTouchState.h"
++#include "mozilla/ipc/BackgroundParent.h"
++#include "nsProxyRelease.h"
++#include "nsTArray.h"
++#include "nsThreadUtils.h"
++
++using namespace mozilla;
++using namespace mozilla::dom;
++
++@interface GeckoGamepadHaptic : NSObject
++- (instancetype)initWithPromise:(GamepadOutputPromise::Private*)promise
++                          owner:(GamepadEventChannelParent*)owner
++                       windowId:(uint64_t)windowId;
++- (void)startWithEngine:(CHHapticEngine*)engine
++              intensity:(double)intensity
++               duration:(double)duration API_AVAILABLE(ios(14.0));
++- (void)finish:(bool)success;
++- (void)stopForOwner:(GamepadEventChannelParent*)owner
++            windowId:(uint64_t)windowId;
++@end
++
++@implementation GeckoGamepadHaptic {
++  CHHapticEngine* mEngine;
++  id<CHHapticAdvancedPatternPlayer> mPlayer;
++  RefPtr<GamepadOutputPromise::Private> mPromise;
++  RefPtr<GamepadEventChannelParent> mOwner;
++  uint64_t mWindowId;
++}
++
++- (instancetype)initWithPromise:(GamepadOutputPromise::Private*)promise
++                          owner:(GamepadEventChannelParent*)owner
++                       windowId:(uint64_t)windowId {
++  self = [super init];
++  if (self) {
++    mPromise = promise;
++    mOwner = owner;
++    mWindowId = windowId;
++  }
++  return self;
++}
++
++- (void)startWithEngine:(CHHapticEngine*)engine
++              intensity:(double)intensity
++               duration:(double)duration {
++  AssertIsOnMainThread();
++  mEngine = [engine retain];
++
++  CHHapticEventParameter* parameter = [[CHHapticEventParameter alloc]
++      initWithParameterID:CHHapticEventParameterIDHapticIntensity
++                    value:intensity];
++  CHHapticEvent* event =
++      [[CHHapticEvent alloc] initWithEventType:CHHapticEventTypeHapticContinuous
++                                    parameters:@[ parameter ]
++                                  relativeTime:0
++                                      duration:GCHapticDurationInfinite];
++  CHHapticPattern* pattern = [[CHHapticPattern alloc] initWithEvents:@[ event ]
++                                                          parameters:@[]
++                                                               error:nil];
++  [event release];
++  [parameter release];
++  if (!pattern) {
++    [self finish:NO];
++    return;
++  }
++
++  mPlayer = [[mEngine createAdvancedPlayerWithPattern:pattern
++                                                error:nil] retain];
++  [pattern release];
++  if (!mPlayer) {
++    [self finish:NO];
++    return;
++  }
++
++  mPlayer.isMuted = intensity == 0;
++  mPlayer.completionHandler = ^(NSError* error) {
++    dispatch_async(dispatch_get_main_queue(), ^{
++      [self finish:error == nil];
++    });
++  };
++  mEngine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) {
++    dispatch_async(dispatch_get_main_queue(), ^{
++      [self finish:NO];
++    });
++  };
++  mEngine.resetHandler = ^{
++    dispatch_async(dispatch_get_main_queue(), ^{
++      [self finish:NO];
++    });
++  };
++
++  if (![mEngine startAndReturnError:nil] ||
++      ![mPlayer startAtTime:CHHapticTimeImmediate error:nil] ||
++      ![mPlayer stopAtTime:mEngine.currentTime + duration / 1000.0 error:nil]) {
++    [self finish:NO];
++  }
++}
++
++- (void)finish:(bool)success {
++  AssertIsOnMainThread();
++  if (!mPromise) {
++    return;
++  }
++
++  mPromise->Resolve(success, __func__);
++  mPromise = nullptr;
++  mPlayer.completionHandler = ^(NSError* error) {
++  };
++  mEngine.stoppedHandler = ^(CHHapticEngineStoppedReason reason) {
++  };
++  mEngine.resetHandler = ^{
++  };
++  [mPlayer cancelAndReturnError:nil];
++  [mPlayer release];
++  mPlayer = nil;
++  [mEngine release];
++  mEngine = nil;
++  mOwner = nullptr;
++}
++
++- (void)stopForOwner:(GamepadEventChannelParent*)owner
++            windowId:(uint64_t)windowId {
++  AssertIsOnMainThread();
++  if (mOwner == owner && (!windowId || mWindowId == windowId)) {
++    [self finish:NO];
++  }
++}
++
++@end
++
++namespace {
++
++struct ButtonState {
++  bool mPressed = false;
++  bool mTouched = false;
++  float mValue = 0;
++};
++
++struct HapticState {
++  NSString* mLocality;
++  CHHapticEngine* mEngine = nil;
++  GeckoGamepadHaptic* mHaptic = nil;
++
++  bool EnsureEngine(GCController* aController) API_AVAILABLE(ios(14.0)) {
++    AssertIsOnMainThread();
++    if (!mEngine) {
++      mEngine =
++          [[aController.haptics createEngineWithLocality:mLocality] retain];
++      mEngine.playsHapticsOnly = YES;
++      mEngine.autoShutdownEnabled = YES;
++    }
++    return mEngine != nil;
++  }
++};
++
++class ControllerState final {
++ public:
++  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ControllerState)
++
++  GamepadHandle Handle() {
++    auto handle = mHandle.Lock();
++    return *handle;
++  }
++
++  DataMutex<GamepadHandle> mHandle{"GeckoGamepadSupport::ControllerState"};
++
++  nsTArray<ButtonState> mButtons;
++  nsTArray<bool> mButtonTouches;
++  std::array<float, AXIS_INDEX_COUNT> mAxes{};
++  nsTArray<GamepadTouchState> mTouches;
++  uint32_t mNextTouchId = 0;
++  GamepadPoseState mPose;
++  nsTArray<HapticState> mHaptics;
++
++ private:
++  ~ControllerState() = default;
++};
++
++static nsTArray<GCControllerButtonInput*> ProfileButtons(
++    GCController* aController) {
++  GCExtendedGamepad* gamepad = aController.extendedGamepad;
++  if (!gamepad) {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++    GCGamepad* basic = aController.gamepad;
++#pragma clang diagnostic pop
++    if (basic) {
++      return {basic.buttonA, basic.buttonB,      basic.buttonX,
++              basic.buttonY, basic.leftShoulder, basic.rightShoulder};
++    }
++    GCMicroGamepad* micro = aController.microGamepad;
++    if (micro) {
++      return {micro.buttonA, micro.buttonX, micro.buttonMenu};
++    }
++    return {};
++  }
++
++  GCControllerButtonInput* home = nil;
++  if (@available(iOS 14.0, *)) {
++    home = gamepad.buttonHome;
++  }
++
++  return {gamepad.buttonA,
++          gamepad.buttonB,
++          gamepad.buttonX,
++          gamepad.buttonY,
++          gamepad.leftShoulder,
++          gamepad.rightShoulder,
++          gamepad.leftTrigger,
++          gamepad.rightTrigger,
++          gamepad.buttonOptions,
++          gamepad.buttonMenu,
++          gamepad.leftThumbstickButton,
++          gamepad.rightThumbstickButton,
++          gamepad.dpad.up,
++          gamepad.dpad.down,
++          gamepad.dpad.left,
++          gamepad.dpad.right,
++          home};
++}
++
++static nsTArray<GCControllerButtonInput*> GamepadButtons(
++    GCController* aController) {
++  auto buttons = ProfileButtons(aController);
++  if (buttons.IsEmpty()) {
++    return buttons;
++  }
++
++  if (@available(iOS 14.0, *)) {
++    NSDictionary<NSString*, GCControllerButtonInput*>* inputs =
++        aController.physicalInputProfile.buttons;
++    for (NSString* name in
++         [[inputs allKeys] sortedArrayUsingSelector:@selector(compare:)]) {
++      GCControllerButtonInput* button = inputs[name];
++      if (![button.collection isKindOfClass:[GCControllerDirectionPad class]] &&
++          !buttons.Contains(button)) {
++        buttons.AppendElement(button);
++      }
++    }
++  }
++
++  return buttons;
++}
++
++static nsTArray<GCControllerDirectionPad*> GamepadTouchpads(
++    GCController* aController) {
++  nsTArray<GCControllerDirectionPad*> touchpads;
++  if (@available(iOS 14.0, *)) {
++    for (NSString* name in
++         @[ GCInputDualShockTouchpadOne, GCInputDualShockTouchpadTwo ]) {
++      GCControllerDirectionPad* touchpad =
++          aController.physicalInputProfile.dpads[name];
++      if (touchpad) {
++        touchpads.AppendElement(touchpad);
++      }
++    }
++  }
++
++  return touchpads;
++}
++
++static nsTArray<GCControllerAxisInput*> GamepadAxes(GCController* aController) {
++  if (GCExtendedGamepad* gamepad = aController.extendedGamepad) {
++    return {gamepad.leftThumbstick.xAxis, gamepad.leftThumbstick.yAxis,
++            gamepad.rightThumbstick.xAxis, gamepad.rightThumbstick.yAxis};
++  }
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wdeprecated-declarations"
++  GCControllerDirectionPad* dpad = aController.gamepad.dpad;
++#pragma clang diagnostic pop
++  if (!dpad) {
++    dpad = aController.microGamepad.dpad;
++  }
++  if (!dpad) {
++    return {};
++  }
++
++  nsTArray<GCControllerAxisInput*> axes{dpad.xAxis, dpad.yAxis};
++  if (@available(iOS 14.5, *)) {
++    GCControllerDirectionPad* cardinal =
++        aController.physicalInputProfile.dpads[GCInputDirectionalCardinalDpad];
++    if (cardinal && cardinal != dpad) {
++      axes.AppendElement(cardinal.xAxis);
++      axes.AppendElement(cardinal.yAxis);
++    }
++  }
++  return axes;
++}
++
++static float GamepadAxisValue(uint32_t aIndex, float aValue) {
++  if (aIndex == AXIS_INDEX_LEFT_STICK_Y || aIndex == AXIS_INDEX_RIGHT_STICK_Y) {
++    return -aValue;
++  }
++  return aValue;
++}
++
++static GamepadPoseState GamepadMotionState(GCMotion* aMotion,
++                                           GCMotion* aValues) {
++  GamepadPoseState pose;
++  if (!aMotion) {
++    return pose;
++  }
++
++  bool hasAttitude;
++  bool hasRotationRate;
++  bool hasLinearAcceleration = true;
++
++  if (@available(iOS 14.0, *)) {
++    hasAttitude = aMotion.hasAttitude;
++    hasRotationRate = aMotion.hasRotationRate;
++    hasLinearAcceleration = aMotion.hasGravityAndUserAcceleration;
++  } else {
++    hasAttitude = hasRotationRate = aMotion.hasAttitudeAndRotationRate;
++  }
++
++  if (hasAttitude) {
++    pose.flags |= GamepadCapabilityFlags::Cap_Orientation;
++    GCQuaternion attitude = aValues.attitude;
++    double length =
++        std::sqrt(attitude.x * attitude.x + attitude.y * attitude.y +
++                  attitude.z * attitude.z + attitude.w * attitude.w);
++    if (std::isfinite(length) && length > 0) {
++      pose.orientation[0] = attitude.x / length;
++      pose.orientation[1] = attitude.y / length;
++      pose.orientation[2] = attitude.z / length;
++      pose.orientation[3] = attitude.w / length;
++      pose.isOrientationValid = true;
++    }
++  }
++
++  pose.isAngularVelocityValid = Some(hasRotationRate);
++  if (hasRotationRate) {
++    GCRotationRate rotationRate = aValues.rotationRate;
++    pose.angularVelocity[0] = rotationRate.x;
++    pose.angularVelocity[1] = rotationRate.y;
++    pose.angularVelocity[2] = rotationRate.z;
++  }
++
++  pose.isLinearAccelerationValid = Some(hasLinearAcceleration);
++  if (hasLinearAcceleration) {
++    pose.flags |= GamepadCapabilityFlags::Cap_LinearAcceleration;
++    GCAcceleration acceleration = aValues.userAcceleration;
++    constexpr double kMeanGravity = 9.80665;
++    pose.linearAcceleration[0] = acceleration.x * kMeanGravity;
++    pose.linearAcceleration[1] = acceleration.y * kMeanGravity;
++    pose.linearAcceleration[2] = acceleration.z * kMeanGravity;
++  }
++  return pose;
++}
++
++static void SetMotionActive(GCMotion* aMotion, bool aActive) {
++  if (@available(iOS 14.0, *)) {
++    if (aMotion.sensorsRequireManualActivation) {
++      aMotion.sensorsActive = aActive;
++    }
++  }
++}
++
++}  // namespace
++
++@interface GeckoGamepadSupport : NSObject
++- (instancetype)initWithService:(GamepadPlatformService*)service
++          backgroundEventTarget:(nsISerialEventTarget*)backgroundEventTarget;
++- (void)shutdown;
++- (void)controllerConnected:(NSNotification*)notification;
++- (void)controllerDisconnected:(NSNotification*)notification;
++- (void)applicationWillResignActive:(NSNotification*)notification;
++- (void)applicationDidBecomeActive:(NSNotification*)notification;
++- (void)addController:(GCController*)controller;
++- (void)removeController:(GCController*)controller;
++- (GCController*)controllerForHandle:(const Tainted<GamepadHandle>&)handle;
++- (void)vibrateHandle:(const Tainted<GamepadHandle>&)handle
++          hapticIndex:(const Tainted<uint32_t>&)hapticIndex
++            intensity:(double)intensity
++             duration:(double)duration
++              promise:(GamepadOutputPromise::Private*)promise
++                owner:(GamepadEventChannelParent*)owner
++             windowId:(uint64_t)windowId;
++- (void)stopVibratingHandle:(const Tainted<GamepadHandle>&)handle
++                      owner:(GamepadEventChannelParent*)owner
++                   windowId:(uint64_t)windowId;
++- (void)stopHapticsForOwner:(GamepadEventChannelParent*)owner;
++- (bool)setLightColorForHandle:(const Tainted<GamepadHandle>&)handle
++                           red:(uint8_t)red
++                         green:(uint8_t)green
++                          blue:(uint8_t)blue;
++- (void)updateButton:(uint32_t)index
++               value:(float)value
++             pressed:(bool)pressed
++             touched:(Maybe<bool>)touched
++          controller:(GCController*)controller;
++- (void)updateAxis:(uint32_t)index
++             value:(float)value
++        controller:(GCController*)controller;
++- (void)updateTouch:(uint32_t)index
++                  x:(float)x
++                  y:(float)y
++         controller:(GCController*)controller;
++- (void)updateMotion:(GCMotion*)motion controller:(GCController*)controller;
++@end
++
++@implementation GeckoGamepadSupport {
++  RefPtr<GamepadPlatformService> mService;
++  nsCOMPtr<nsISerialEventTarget> mBackgroundEventTarget;
++  std::map<GCController*, RefPtr<ControllerState>> mControllers;
++}
++
++- (instancetype)initWithService:(GamepadPlatformService*)service
++          backgroundEventTarget:(nsISerialEventTarget*)backgroundEventTarget {
++  AssertIsOnMainThread();
++  self = [super init];
++  if (!self) {
++    return nil;
++  }
++
++  mService = service;
++  mBackgroundEventTarget = backgroundEventTarget;
++
++  NSNotificationCenter* center = [NSNotificationCenter defaultCenter];
++  [center addObserver:self
++             selector:@selector(controllerConnected:)
++                 name:GCControllerDidConnectNotification
++               object:nil];
++  [center addObserver:self
++             selector:@selector(controllerDisconnected:)
++                 name:GCControllerDidDisconnectNotification
++               object:nil];
++  [center addObserver:self
++             selector:@selector(applicationWillResignActive:)
++                 name:UIApplicationWillResignActiveNotification
++               object:nil];
++  [center addObserver:self
++             selector:@selector(applicationDidBecomeActive:)
++                 name:UIApplicationDidBecomeActiveNotification
++               object:nil];
++  for (GCController* controller in [GCController controllers]) {
++    [self addController:controller];
++  }
++  return self;
++}
++
++- (void)dealloc {
++  NS_ProxyRelease("GeckoGamepadSupport::mService", mBackgroundEventTarget,
++                  mService.forget());
++  [super dealloc];
++}
++
++- (void)shutdown {
++  AssertIsOnMainThread();
++  [[NSNotificationCenter defaultCenter] removeObserver:self];
++  while (!mControllers.empty()) {
++    [self removeController:mControllers.begin()->first];
++  }
++}
++
++- (void)controllerConnected:(NSNotification*)notification {
++  [self addController:notification.object];
++}
++
++- (void)controllerDisconnected:(NSNotification*)notification {
++  [self removeController:notification.object];
++}
++
++- (void)applicationWillResignActive:(NSNotification*)notification {
++  AssertIsOnMainThread();
++  for (const auto& [controller, state] : mControllers) {
++    SetMotionActive(controller.motion, false);
++    for (auto& haptic : state->mHaptics) {
++      [haptic.mHaptic finish:NO];
++      [haptic.mEngine stopWithCompletionHandler:nil];
++    }
++  }
++}
++
++- (void)applicationDidBecomeActive:(NSNotification*)notification {
++  AssertIsOnMainThread();
++  for (const auto& [controller, state] : mControllers) {
++    SetMotionActive(controller.motion, true);
++  }
++}
++
++- (void)addController:(GCController*)controller {
++  AssertIsOnMainThread();
++  if (mControllers.count(controller)) {
++    return;
++  }
++
++  auto buttons = GamepadButtons(controller);
++  if (buttons.IsEmpty()) {
++    return;
++  }
++
++  controller.handlerQueue = dispatch_get_main_queue();
++  RefPtr<ControllerState> state = new ControllerState();
++  RefPtr<GamepadPlatformService> service = mService;
++  nsCString name((controller.vendorName ?: @"Unknown Gamepad").UTF8String);
++  uint32_t numHaptics = 0;
++  uint32_t numLights = 0;
++
++  if (@available(iOS 14.0, *)) {
++    NSSet<GCHapticsLocality>* localities =
++        controller.haptics.supportedLocalities;
++    auto addLocalities = [&](NSString* left, NSString* right, NSString* group) {
++      uint32_t count = state->mHaptics.Length();
++
++      for (NSString* locality in @[ left, right ]) {
++        if ([localities containsObject:locality]) {
++          state->mHaptics.AppendElement(HapticState{locality});
++        }
++      }
++
++      if (state->mHaptics.Length() == count &&
++          [localities containsObject:group]) {
++        state->mHaptics.AppendElement(HapticState{group});
++      }
++    };
++
++    addLocalities(GCHapticsLocalityLeftHandle, GCHapticsLocalityRightHandle,
++                  GCHapticsLocalityHandles);
++    addLocalities(GCHapticsLocalityLeftTrigger, GCHapticsLocalityRightTrigger,
++                  GCHapticsLocalityTriggers);
++
++    if (state->mHaptics.IsEmpty() && localities.count) {
++      state->mHaptics.AppendElement(HapticState{GCHapticsLocalityDefault});
++    }
++
++    numHaptics = state->mHaptics.Length();
++    numLights = controller.light ? 1 : 0;
++  }
++  mControllers.emplace([controller retain], state);
++
++  state->mButtons.SetLength(buttons.Length());
++  state->mButtonTouches.SetLength(buttons.Length());
++  for (uint32_t i = 0; i < buttons.Length(); ++i) {
++    GCControllerButtonInput* button = buttons[i];
++    button.valueChangedHandler =
++        ^(GCControllerButtonInput* input, float value, BOOL pressed) {
++          [self updateButton:i
++                       value:value
++                     pressed:pressed
++                     touched:Nothing()
++                  controller:controller];
++        };
++    if (@available(iOS 14.0, *)) {
++      button.touchedChangedHandler =
++          ^(GCControllerButtonInput* input, float value, BOOL pressed,
++            BOOL touched) {
++            [self updateButton:i
++                         value:value
++                       pressed:pressed
++                       touched:Some(bool(touched))
++                    controller:controller];
++          };
++    }
++  }
++
++  auto axes = GamepadAxes(controller);
++  for (uint32_t i = 0; i < axes.Length(); ++i) {
++    axes[i].valueChangedHandler = ^(GCControllerAxisInput* input, float value) {
++      [self updateAxis:i value:value controller:controller];
++    };
++  }
++
++  auto touchpads = GamepadTouchpads(controller);
++  state->mTouches.SetLength(touchpads.Length());
++  for (uint32_t i = 0; i < touchpads.Length(); ++i) {
++    touchpads[i].valueChangedHandler =
++        ^(GCControllerDirectionPad* input, float x, float y) {
++          [self updateTouch:i x:x y:y controller:controller];
++        };
++  }
++
++  GCMotion* motion = controller.motion;
++  motion.valueChangedHandler = ^(GCMotion* input) {
++    [self updateMotion:input controller:controller];
++  };
++  SetMotionActive(motion, UIApplication.sharedApplication.applicationState ==
++                              UIApplicationStateActive);
++
++  GCController* capturedController = [controller capture];
++  state->mPose = GamepadMotionState(motion, capturedController.motion);
++  nsTArray<GamepadButtonInformation> initialButtons;
++  nsTArray<GamepadAxisInformation> initialAxes;
++
++  const auto profile = ProfileButtons(capturedController);
++  for (uint32_t i = 0; i < buttons.Length(); ++i) {
++    GCControllerButtonInput* button = nil;
++    if (i < profile.Length()) {
++      button = profile[i];
++    } else if (@available(iOS 14.0, *)) {
++      button = capturedController.physicalInputProfile
++                   .buttons[buttons[i].aliases.anyObject];
++    }
++
++    state->mButtons[i] = {bool(button.isPressed), bool(button.isTouched),
++                          button.value};
++    state->mButtonTouches[i] = false;
++
++    if (@available(iOS 14.0, *)) {
++      state->mButtonTouches[i] = button.isTouched;
++    }
++
++    initialButtons.AppendElement(GamepadButtonInformation(
++        i, button.value, button.isPressed, button.isTouched));
++  }
++
++  const auto snapshotAxes = GamepadAxes(capturedController);
++  for (uint32_t i = 0; i < axes.Length(); ++i) {
++    GCControllerAxisInput* axis =
++        i < snapshotAxes.Length() ? snapshotAxes[i] : axes[i];
++    float value = GamepadAxisValue(i, axis.value);
++    state->mAxes[i] = value;
++    initialAxes.AppendElement(GamepadAxisInformation(i, value));
++  }
++
++  for (uint32_t i = 0; i < touchpads.Length(); ++i) {
++    if (@available(iOS 14.0, *)) {
++      GCControllerDirectionPad* touchpad =
++          capturedController.physicalInputProfile
++              .dpads[touchpads[i].aliases.anyObject];
++      float x = touchpad.xAxis.value;
++      float y = touchpad.yAxis.value;
++      if (x != 0 || y != 0) {
++        GamepadTouchState& touch = state->mTouches[i];
++        touch.touchId = ++state->mNextTouchId;
++        touch.position[0] = x;
++        touch.position[1] = -y;
++      }
++    }
++  }
++
++  GamepadMappingType mapping = controller.extendedGamepad
++                                   ? GamepadMappingType::Standard
++                                   : GamepadMappingType::_empty;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::AddController",
++      [service, state, name, mapping, numHaptics, numLights,
++       buttons = std::move(initialButtons), axes = std::move(initialAxes),
++       touches = state->mTouches.Clone(), pose = state->mPose] {
++        auto handle = state->mHandle.Lock();
++        *handle = service->AddGamepad(name.get(), mapping, GamepadHand::_empty,
++                                      buttons.Length(), axes.Length(),
++                                      numHaptics, numLights, touches.Length(),
++                                      buttons, axes, touches, pose);
++      }));
++}
++
++- (void)removeController:(GCController*)controller {
++  AssertIsOnMainThread();
++  auto entry = mControllers.find(controller);
++  if (entry == mControllers.end()) {
++    return;
++  }
++
++  RefPtr<ControllerState> state = entry->second;
++  for (auto& haptic : state->mHaptics) {
++    [haptic.mHaptic finish:NO];
++    [haptic.mHaptic release];
++    haptic.mHaptic = nil;
++    [haptic.mEngine stopWithCompletionHandler:nil];
++    [haptic.mEngine release];
++    haptic.mEngine = nil;
++  }
++
++  for (GCControllerButtonInput* button : GamepadButtons(controller)) {
++    button.valueChangedHandler = nil;
++    if (@available(iOS 14.0, *)) {
++      button.touchedChangedHandler = nil;
++    }
++  }
++
++  for (GCControllerAxisInput* axis : GamepadAxes(controller)) {
++    axis.valueChangedHandler = nil;
++  }
++
++  for (GCControllerDirectionPad* touchpad : GamepadTouchpads(controller)) {
++    touchpad.valueChangedHandler = nil;
++  }
++
++  controller.motion.valueChangedHandler = nil;
++  SetMotionActive(controller.motion, false);
++
++  RefPtr<GamepadPlatformService> service = mService;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::RemoveController",
++      [service, state] { service->RemoveGamepad(state->Handle()); }));
++  mControllers.erase(entry);
++  [controller release];
++}
++
++- (GCController*)controllerForHandle:(const Tainted<GamepadHandle>&)handle {
++  AssertIsOnMainThread();
++  const auto* entry = MOZ_FIND_AND_VALIDATE(
++      handle, handle != GamepadHandle() && list_item.second->Handle() == handle,
++      mControllers);
++  return entry ? entry->first : nil;
++}
++
++- (void)vibrateHandle:(const Tainted<GamepadHandle>&)handle
++          hapticIndex:(const Tainted<uint32_t>&)hapticIndex
++            intensity:(double)intensity
++             duration:(double)duration
++              promise:(GamepadOutputPromise::Private*)promise
++                owner:(GamepadEventChannelParent*)owner
++             windowId:(uint64_t)windowId {
++  AssertIsOnMainThread();
++  GCController* controller = [self controllerForHandle:handle];
++  bool active = [UIApplication sharedApplication].applicationState ==
++                UIApplicationStateActive;
++  if (!controller || !active) {
++    promise->Resolve(false, __func__);
++    return;
++  }
++
++  RefPtr<ControllerState> state = mControllers.at(controller);
++  if (!MOZ_IS_VALID(hapticIndex, hapticIndex < state->mHaptics.Length())) {
++    promise->Resolve(false, __func__);
++    return;
++  }
++
++  uint32_t index =
++      MOZ_VALIDATE_AND_GET(hapticIndex, hapticIndex < state->mHaptics.Length());
++  HapticState& haptic = state->mHaptics[index];
++  if (@available(iOS 14.0, *)) {
++    if (haptic.EnsureEngine(controller)) {
++      [haptic.mHaptic finish:NO];
++      [haptic.mHaptic release];
++      haptic.mHaptic = nil;
++
++      if (duration == 0) {
++        promise->Resolve(true, __func__);
++        return;
++      }
++
++      haptic.mHaptic = [[GeckoGamepadHaptic alloc] initWithPromise:promise
++                                                             owner:owner
++                                                          windowId:windowId];
++      [haptic.mHaptic startWithEngine:haptic.mEngine
++                            intensity:intensity
++                             duration:duration];
++      return;
++    }
++  }
++
++  promise->Resolve(false, __func__);
++}
++
++- (void)stopVibratingHandle:(const Tainted<GamepadHandle>&)handle
++                      owner:(GamepadEventChannelParent*)owner
++                   windowId:(uint64_t)windowId {
++  AssertIsOnMainThread();
++  GCController* controller = [self controllerForHandle:handle];
++  if (controller) {
++    for (auto& haptic : mControllers.at(controller)->mHaptics) {
++      [haptic.mHaptic stopForOwner:owner windowId:windowId];
++    }
++  }
++}
++
++- (void)stopHapticsForOwner:(GamepadEventChannelParent*)owner {
++  AssertIsOnMainThread();
++  for (const auto& [controller, state] : mControllers) {
++    for (auto& haptic : state->mHaptics) {
++      [haptic.mHaptic stopForOwner:owner windowId:0];
++    }
++  }
++}
++
++- (bool)setLightColorForHandle:(const Tainted<GamepadHandle>&)handle
++                           red:(uint8_t)red
++                         green:(uint8_t)green
++                          blue:(uint8_t)blue {
++  AssertIsOnMainThread();
++  GCController* controller = [self controllerForHandle:handle];
++  bool active = [UIApplication sharedApplication].applicationState ==
++                UIApplicationStateActive;
++  if (!controller || !active) {
++    return false;
++  }
++
++  if (@available(iOS 14.0, *)) {
++    GCDeviceLight* light = controller.light;
++    if (!light) {
++      return false;
++    }
++
++    GCColor* color = [[GCColor alloc] initWithRed:red / 255.0f
++                                            green:green / 255.0f
++                                             blue:blue / 255.0f];
++    light.color = color;
++    [color release];
++    return true;
++  }
++
++  return false;
++}
++
++- (void)updateButton:(uint32_t)index
++               value:(float)value
++             pressed:(bool)pressed
++             touched:(Maybe<bool>)touched
++          controller:(GCController*)controller {
++  AssertIsOnMainThread();
++  auto entry = mControllers.find(controller);
++  if (entry == mControllers.end()) {
++    return;
++  }
++
++  RefPtr<ControllerState> state = entry->second;
++  if (touched.isSome()) {
++    state->mButtonTouches[index] = touched.value();
++  }
++
++  bool isTouched = state->mButtonTouches[index] || pressed || value > 0;
++  ButtonState& previous = state->mButtons[index];
++  if (previous.mPressed == pressed && previous.mTouched == isTouched &&
++      previous.mValue == value) {
++    return;
++  }
++  previous = {pressed, isTouched, value};
++  RefPtr<GamepadPlatformService> service = mService;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::UpdateButton",
++      [service, state, index, pressed, isTouched, value] {
++        GamepadHandle handle = state->Handle();
++        service->NewButtonEvent(handle, index, pressed, isTouched, value);
++      }));
++}
++
++- (void)updateAxis:(uint32_t)index
++             value:(float)value
++        controller:(GCController*)controller {
++  AssertIsOnMainThread();
++  auto entry = mControllers.find(controller);
++  if (entry == mControllers.end()) {
++    return;
++  }
++
++  value = GamepadAxisValue(index, value);
++
++  RefPtr<ControllerState> state = entry->second;
++  if (state->mAxes[index] == value) {
++    return;
++  }
++  state->mAxes[index] = value;
++  RefPtr<GamepadPlatformService> service = mService;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::UpdateAxis", [service, state, index, value] {
++        service->NewAxisMoveEvent(state->Handle(), index, value);
++      }));
++}
++
++- (void)updateTouch:(uint32_t)index
++                  x:(float)x
++                  y:(float)y
++         controller:(GCController*)controller {
++  AssertIsOnMainThread();
++  auto entry = mControllers.find(controller);
++  if (entry == mControllers.end()) {
++    return;
++  }
++
++  RefPtr<ControllerState> state = entry->second;
++  GamepadTouchState& previous = state->mTouches[index];
++  GamepadTouchState touch;
++
++  // Sony profiles use (0, 0) for no contact and expose no separate touch flag.
++  if (x != 0 || y != 0) {
++    touch.touchId = previous.touchId ? previous.touchId : ++state->mNextTouchId;
++    touch.position[0] = x;
++    touch.position[1] = -y;
++  }
++
++  if (touch == previous) {
++    return;
++  }
++
++  previous = touch;
++  RefPtr<GamepadPlatformService> service = mService;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::UpdateTouch", [service, state, index, touch] {
++        service->NewMultiTouchEvent(state->Handle(), index, touch);
++      }));
++}
++
++- (void)updateMotion:(GCMotion*)motion controller:(GCController*)controller {
++  AssertIsOnMainThread();
++  auto entry = mControllers.find(controller);
++  if (entry == mControllers.end()) {
++    return;
++  }
++
++  RefPtr<ControllerState> state = entry->second;
++  GamepadPoseState pose = GamepadMotionState(motion, motion);
++  if (state->mPose == pose) {
++    return;
++  }
++  state->mPose = pose;
++  RefPtr<GamepadPlatformService> service = mService;
++  mBackgroundEventTarget->Dispatch(NS_NewRunnableFunction(
++      "GeckoGamepadSupport::UpdateMotion", [service, state, pose] {
++        service->NewPoseEvent(state->Handle(), pose);
++      }));
++}
++
++@end
++
++static GeckoGamepadSupport* gGamepadSupport;  // Main queue only.
++
++namespace mozilla::dom {
++
++void StartGamepadMonitoring() {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  RefPtr<GamepadPlatformService> service =
++      GamepadPlatformService::GetParentService();
++  nsCOMPtr<nsISerialEventTarget> backgroundEventTarget =
++      GetCurrentSerialEventTarget();
++  dispatch_async(dispatch_get_main_queue(), ^{
++    if (!gGamepadSupport) {
++      gGamepadSupport =
++          [[GeckoGamepadSupport alloc] initWithService:service
++                                 backgroundEventTarget:backgroundEventTarget];
++    }
++  });
++}
++
++void StopGamepadMonitoring() {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  dispatch_async(dispatch_get_main_queue(), ^{
++    [gGamepadSupport shutdown];
++    [gGamepadSupport release];
++    gGamepadSupport = nil;
++  });
++}
++
++RefPtr<GamepadOutputPromise> VibrateHaptic(
++    const Tainted<GamepadHandle>& aHandle,
++    const Tainted<uint32_t>& aHapticIndex, const Tainted<double>& aIntensity,
++    const Tainted<double>& aDuration, GamepadEventChannelParent* aOwner,
++    uint64_t aWindowId) {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  if (!MOZ_IS_VALID(aIntensity, std::isfinite(aIntensity) && aIntensity >= 0 &&
++                                    aIntensity <= 1)) {
++    return GamepadOutputPromise::CreateAndResolve(false, __func__);
++  }
++
++  if (!MOZ_IS_VALID(aDuration, std::isfinite(aDuration) && aDuration >= 0)) {
++    return GamepadOutputPromise::CreateAndResolve(false, __func__);
++  }
++
++  double intensity =
++      MOZ_VALIDATE_AND_GET(aIntensity, aIntensity >= 0 && aIntensity <= 1);
++  double duration = MOZ_VALIDATE_AND_GET(aDuration, aDuration >= 0);
++  auto promise = MakeRefPtr<GamepadOutputPromise::Private>(__func__);
++  Tainted<GamepadHandle> handle = aHandle;
++  Tainted<uint32_t> hapticIndex = aHapticIndex;
++  RefPtr<GamepadEventChannelParent> owner = aOwner;
++
++  dispatch_async(dispatch_get_main_queue(), ^{
++    if (gGamepadSupport) {
++      [gGamepadSupport vibrateHandle:handle
++                         hapticIndex:hapticIndex
++                           intensity:intensity
++                            duration:duration
++                             promise:promise
++                               owner:owner
++                            windowId:aWindowId];
++    } else {
++      promise->Resolve(false, __func__);
++    }
++  });
++  return promise;
++}
++
++void StopVibrateHaptic(const Tainted<GamepadHandle>& aHandle,
++                       GamepadEventChannelParent* aOwner, uint64_t aWindowId) {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  Tainted<GamepadHandle> handle = aHandle;
++  RefPtr<GamepadEventChannelParent> owner = aOwner;
++  dispatch_async(dispatch_get_main_queue(), ^{
++    [gGamepadSupport stopVibratingHandle:handle owner:owner windowId:aWindowId];
++  });
++}
++
++void StopGamepadHaptics(GamepadEventChannelParent* aOwner) {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  RefPtr<GamepadEventChannelParent> owner = aOwner;
++  dispatch_async(dispatch_get_main_queue(), ^{
++    [gGamepadSupport stopHapticsForOwner:owner];
++  });
++}
++
++RefPtr<GamepadOutputPromise> SetGamepadLightIndicatorColor(
++    const Tainted<GamepadHandle>& aHandle,
++    const Tainted<uint32_t>& aLightColorIndex, const uint8_t& aRed,
++    const uint8_t& aGreen, const uint8_t& aBlue) {
++  mozilla::ipc::AssertIsOnBackgroundThread();
++  if (!MOZ_IS_VALID(aLightColorIndex, aLightColorIndex == 0)) {
++    return GamepadOutputPromise::CreateAndResolve(false, __func__);
++  }
++
++  auto promise = MakeRefPtr<GamepadOutputPromise::Private>(__func__);
++  Tainted<GamepadHandle> handle = aHandle;
++  uint8_t red = aRed;
++  uint8_t green = aGreen;
++  uint8_t blue = aBlue;
++  dispatch_async(dispatch_get_main_queue(), ^{
++    bool success = [gGamepadSupport setLightColorForHandle:handle
++                                                       red:red
++                                                     green:green
++                                                      blue:blue];
++    promise->Resolve(success, __func__);
++  });
++  return promise;
++}
++
++}  // namespace mozilla::dom

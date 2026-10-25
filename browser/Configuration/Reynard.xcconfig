@@ -1,4 +1,4 @@
-CURRENT_VERSION = 0.18.0
+CURRENT_VERSION = 0.19.0
 CURRENT_BUILD = UNKNOWN
 APP_DISPLAY_NAME = Reynard
 
@@ -14,4 +14,3 @@ HEADER_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/include $(GECKO_DIST)/include/G
 LIBRARY_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/bin
 FRAMEWORK_SEARCH_PATHS = $(inherited) $(BUILT_PRODUCTS_DIR)
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks @loader_path/Frameworks
-SWIFT_OBJC_BRIDGING_HEADER = $(SRCROOT)/Reynard/Bridging/Reynard-Bridging-Header.h

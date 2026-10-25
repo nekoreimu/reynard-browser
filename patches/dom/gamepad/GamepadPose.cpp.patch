@@ -1,0 +1,28 @@
+diff --git a/dom/gamepad/GamepadPose.cpp b/dom/gamepad/GamepadPose.cpp
+index c962f043445e..16b80e5fbfb9 100644
+--- a/dom/gamepad/GamepadPose.cpp
++++ b/dom/gamepad/GamepadPose.cpp
+@@ -62,9 +62,9 @@ void GamepadPose::GetLinearVelocity(JSContext* aJSContext,
+ void GamepadPose::GetLinearAcceleration(JSContext* aJSContext,
+                                         JS::MutableHandle<JSObject*> aRetval,
+                                         ErrorResult& aRv) {
+-  const bool valid =
++  const bool valid = mPoseState.isLinearAccelerationValid.valueOr(
+       mPoseState.isPositionValid &&
+-      bool(mPoseState.flags & GamepadCapabilityFlags::Cap_LinearAcceleration);
++      bool(mPoseState.flags & GamepadCapabilityFlags::Cap_LinearAcceleration));
+   SetFloat32Array(aJSContext, this, aRetval, mLinearAcceleration,
+                   valid ? mPoseState.linearAcceleration : nullptr, 3, aRv);
+ }
+@@ -82,9 +82,9 @@ void GamepadPose::GetOrientation(JSContext* aJSContext,
+ void GamepadPose::GetAngularVelocity(JSContext* aJSContext,
+                                      JS::MutableHandle<JSObject*> aRetval,
+                                      ErrorResult& aRv) {
+-  const bool valid =
++  const bool valid = mPoseState.isAngularVelocityValid.valueOr(
+       mPoseState.isOrientationValid &&
+-      bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Orientation);
++      bool(mPoseState.flags & GamepadCapabilityFlags::Cap_Orientation));
+   SetFloat32Array(aJSContext, this, aRetval, mAngularVelocity,
+                   valid ? mPoseState.angularVelocity : nullptr, 3, aRv);
+ }

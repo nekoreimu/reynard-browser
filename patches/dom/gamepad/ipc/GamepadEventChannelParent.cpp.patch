@@ -1,0 +1,96 @@
+diff --git a/dom/gamepad/ipc/GamepadEventChannelParent.cpp b/dom/gamepad/ipc/GamepadEventChannelParent.cpp
+index c59685549156..0aa4eaca63a9 100644
+--- a/dom/gamepad/ipc/GamepadEventChannelParent.cpp
++++ b/dom/gamepad/ipc/GamepadEventChannelParent.cpp
+@@ -61,6 +61,14 @@ void GamepadEventChannelParent::ActorDestroy(ActorDestroyReason aWhy) {
+ 
+   mIsShutdown = true;
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  for (auto& entry : mOutputRequests) {
++    entry.second.Disconnect();
++  }
++  mOutputRequests.clear();
++  StopGamepadHaptics(this);
++#endif
++
+   RefPtr<GamepadPlatformService> service =
+       GamepadPlatformService::GetParentService();
+   MOZ_ASSERT(service);
+@@ -70,19 +78,41 @@ void GamepadEventChannelParent::ActorDestroy(ActorDestroyReason aWhy) {
+ mozilla::ipc::IPCResult GamepadEventChannelParent::RecvVibrateHaptic(
+     const Tainted<GamepadHandle>& aHandle,
+     const Tainted<uint32_t>& aHapticIndex, const Tainted<double>& aIntensity,
+-    const Tainted<double>& aDuration, const uint32_t& aPromiseID) {
++    const Tainted<double>& aDuration, const uint64_t& aWindowId,
++    const uint32_t& aPromiseID) {
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<GamepadEventChannelParent> self = this;
++  VibrateHaptic(aHandle, aHapticIndex, aIntensity, aDuration, this, aWindowId)
++      ->Then(GetActorEventTarget(), __func__,
++             [self, aPromiseID](
++                 GamepadOutputPromise::ResolveOrRejectValue&& aResult) {
++               self->mOutputRequests.at(aPromiseID).Complete();
++               self->mOutputRequests.erase(aPromiseID);
++               if (self->CanSend()) {
++                 (void)self->SendReplyGamepadPromise(aPromiseID,
++                                                     aResult.ResolveValue());
++               }
++             })
++      ->Track(mOutputRequests[aPromiseID]);
++  return IPC_OK();
++#else
+   // TODO: Bug 680289, implement for standard gamepads
+ 
+-  if (SendReplyGamepadPromise(aPromiseID)) {
++  if (SendReplyGamepadPromise(aPromiseID, true)) {
+     return IPC_OK();
+   }
+ 
+   return IPC_FAIL(this, "SendReplyGamepadPromise fail.");
++#endif
+ }
+ 
+ mozilla::ipc::IPCResult GamepadEventChannelParent::RecvStopVibrateHaptic(
+-    const Tainted<GamepadHandle>& aHandle) {
++    const Tainted<GamepadHandle>& aHandle, const uint64_t& aWindowId) {
++#ifdef MOZ_WIDGET_UIKIT
++  StopVibrateHaptic(aHandle, this, aWindowId);
++#else
+   // TODO: Bug 680289, implement for standard gamepads
++#endif
+   return IPC_OK();
+ }
+ 
+@@ -90,13 +120,30 @@ mozilla::ipc::IPCResult GamepadEventChannelParent::RecvLightIndicatorColor(
+     const Tainted<GamepadHandle>& aHandle,
+     const Tainted<uint32_t>& aLightColorIndex, const uint8_t& aRed,
+     const uint8_t& aGreen, const uint8_t& aBlue, const uint32_t& aPromiseID) {
++#ifdef MOZ_WIDGET_UIKIT
++  RefPtr<GamepadEventChannelParent> self = this;
++  SetGamepadLightIndicatorColor(aHandle, aLightColorIndex, aRed, aGreen, aBlue)
++      ->Then(GetActorEventTarget(), __func__,
++             [self, aPromiseID](
++                 GamepadOutputPromise::ResolveOrRejectValue&& aResult) {
++               self->mOutputRequests.at(aPromiseID).Complete();
++               self->mOutputRequests.erase(aPromiseID);
++               if (self->CanSend()) {
++                 (void)self->SendReplyGamepadPromise(aPromiseID,
++                                                     aResult.ResolveValue());
++               }
++             })
++      ->Track(mOutputRequests[aPromiseID]);
++  return IPC_OK();
++#else
+   SetGamepadLightIndicatorColor(aHandle, aLightColorIndex, aRed, aGreen, aBlue);
+ 
+-  if (SendReplyGamepadPromise(aPromiseID)) {
++  if (SendReplyGamepadPromise(aPromiseID, true)) {
+     return IPC_OK();
+   }
+ 
+   return IPC_FAIL(this, "SendReplyGamepadPromise fail.");
++#endif
+ }
+ 
+ mozilla::ipc::IPCResult GamepadEventChannelParent::RecvRequestAllGamepads(

@@ -1,0 +1,45 @@
+diff --git a/dom/gamepad/GamepadMonitoring.h b/dom/gamepad/GamepadMonitoring.h
+index c8f0dce449bb..8db4ca8d38c2 100644
+--- a/dom/gamepad/GamepadMonitoring.h
++++ b/dom/gamepad/GamepadMonitoring.h
+@@ -6,6 +6,9 @@
+ #define mozilla_dom_GamepadMonitoring_h_
+ #include "mozilla/Tainting.h"
+ #include "mozilla/dom/GamepadHandle.h"
++#ifdef MOZ_WIDGET_UIKIT
++#  include "mozilla/MozPromise.h"
++#endif
+ 
+ namespace mozilla::dom {
+ 
+@@ -13,10 +16,30 @@ namespace mozilla::dom {
+ // (linux/LinuxGamepad.cpp, cocoa/CocoaGamepad.cpp, etc)
+ void StartGamepadMonitoring();
+ void StopGamepadMonitoring();
++
++#ifdef MOZ_WIDGET_UIKIT
++class GamepadEventChannelParent;
++
++using GamepadOutputPromise = MozPromise<bool, nsresult, true>;
++
++RefPtr<GamepadOutputPromise> VibrateHaptic(
++    const Tainted<GamepadHandle>& aHandle,
++    const Tainted<uint32_t>& aHapticIndex, const Tainted<double>& aIntensity,
++    const Tainted<double>& aDuration, GamepadEventChannelParent* aOwner,
++    uint64_t aWindowId);
++void StopVibrateHaptic(const Tainted<GamepadHandle>& aHandle,
++                       GamepadEventChannelParent* aOwner, uint64_t aWindowId);
++void StopGamepadHaptics(GamepadEventChannelParent* aOwner);
++RefPtr<GamepadOutputPromise> SetGamepadLightIndicatorColor(
++    const Tainted<GamepadHandle>& aGamepadHandle,
++    const Tainted<uint32_t>& aLightColorIndex, const uint8_t& aRed,
++    const uint8_t& aGreen, const uint8_t& aBlue);
++#else
+ void SetGamepadLightIndicatorColor(const Tainted<GamepadHandle>& aGamepadHandle,
+                                    const Tainted<uint32_t>& aLightColorIndex,
+                                    const uint8_t& aRed, const uint8_t& aGreen,
+                                    const uint8_t& aBlue);
++#endif
+ 
+ }  // namespace mozilla::dom
+ 

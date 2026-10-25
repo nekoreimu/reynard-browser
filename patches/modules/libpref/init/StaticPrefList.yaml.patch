@@ -1,7 +1,23 @@
 diff --git a/modules/libpref/init/StaticPrefList.yaml b/modules/libpref/init/StaticPrefList.yaml
-index ea124d888416..a0a4ab8ac328 100644
+index ea124d888416..578918d5950b 100644
 --- a/modules/libpref/init/StaticPrefList.yaml
 +++ b/modules/libpref/init/StaticPrefList.yaml
+@@ -3407,13 +3407,13 @@
+ # Is LightIndicator API enabled in Gamepad Extension API?
+ - name: dom.gamepad.extensions.lightindicator
+   type: bool
+-  value: false
++  value: @IS_IOS@
+   mirror: always
+ 
+ # Is MultiTouch API enabled in Gamepad Extension API?
+ - name: dom.gamepad.extensions.multitouch
+   type: bool
+-  value: false
++  value: @IS_IOS@
+   mirror: always
+ 
+ # Is Gamepad vibrate haptic feedback function enabled?
 @@ -3741,6 +3741,8 @@
  #ifdef ANDROID
    # Bug 1999950: Prelaunch 1 process on Android due to a performance regression.

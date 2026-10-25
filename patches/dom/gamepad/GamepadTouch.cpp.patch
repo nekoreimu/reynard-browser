@@ -1,0 +1,37 @@
+diff --git a/dom/gamepad/GamepadTouch.cpp b/dom/gamepad/GamepadTouch.cpp
+index 6b3b3b862826..778f5f31b636 100644
+--- a/dom/gamepad/GamepadTouch.cpp
++++ b/dom/gamepad/GamepadTouch.cpp
+@@ -42,15 +42,15 @@ void GamepadTouch::GetPosition(JSContext* aCx,
+ void GamepadTouch::GetSurfaceDimensions(JSContext* aCx,
+                                         JS::MutableHandle<JSObject*> aRetval,
+                                         ErrorResult& aRv) {
+-  if (mTouchState.isSurfaceDimensionsValid) {
+-    mSurfaceDimensions =
+-        Uint32Array::Create(aCx, this, mTouchState.surfaceDimensions, aRv);
+-  } else {
+-    mSurfaceDimensions = Uint32Array::Create(
+-        aCx, this, std::size(mTouchState.surfaceDimensions), aRv);
++  if (!mTouchState.isSurfaceDimensionsValid) {
++    mSurfaceDimensions = nullptr;
++    aRetval.set(nullptr);
++    return;
+   }
+ 
+-  if (!mSurfaceDimensions) {
++  mSurfaceDimensions =
++      Uint32Array::Create(aCx, this, mTouchState.surfaceDimensions, aRv);
++  if (aRv.Failed()) {
+     return;
+   }
+ 
+@@ -61,9 +61,4 @@ void GamepadTouch::SetTouchState(const GamepadTouchState& aTouch) {
+   mTouchState = aTouch;
+ }
+ 
+-void GamepadTouch::Set(const GamepadTouch* aOther) {
+-  MOZ_ASSERT(aOther);
+-  mTouchState = aOther->mTouchState;
+-}
+-
+ }  // namespace mozilla::dom

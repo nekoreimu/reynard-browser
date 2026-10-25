@@ -1,0 +1,45 @@
+diff --git a/dom/gamepad/GamepadPlatformService.h b/dom/gamepad/GamepadPlatformService.h
+index 503e04c96c7b..1091c53a8ec6 100644
+--- a/dom/gamepad/GamepadPlatformService.h
++++ b/dom/gamepad/GamepadPlatformService.h
+@@ -69,11 +69,14 @@ class GamepadPlatformService final {
+   static already_AddRefed<GamepadPlatformService> GetParentService();
+ 
+   // Add a gamepad to the list of known gamepads, and return its handle.
+-  GamepadHandle AddGamepad(const char* aID, GamepadMappingType aMapping,
+-                           GamepadHand aHand, uint32_t aNumButtons,
+-                           uint32_t aNumAxes, uint32_t aNumHaptics,
+-                           uint32_t aNumLightIndicator,
+-                           uint32_t aNumTouchEvents) MOZ_EXCLUDES(mMutex);
++  GamepadHandle AddGamepad(
++      const char* aID, GamepadMappingType aMapping, GamepadHand aHand,
++      uint32_t aNumButtons, uint32_t aNumAxes, uint32_t aNumHaptics,
++      uint32_t aNumLightIndicator, uint32_t aNumTouchEvents,
++      const nsTArray<GamepadButtonInformation>& aButtons = {},
++      const nsTArray<GamepadAxisInformation>& aAxes = {},
++      const nsTArray<GamepadTouchState>& aTouches = {},
++      const GamepadPoseState& aPose = {}) MOZ_EXCLUDES(mMutex);
+   // Remove the gamepad at |aHandle| from the list of known gamepads.
+   void RemoveGamepad(GamepadHandle aHandle) MOZ_EXCLUDES(mMutex);
+ 
+@@ -126,9 +129,9 @@ class GamepadPlatformService final {
+ 
+   void MaybeShutdown() MOZ_EXCLUDES(mMutex);
+ 
+-  nsTArray<GamepadAdded> GetAllGamePads() MOZ_EXCLUDES(mMutex) {
++  nsTArray<GamepadState> GetAllGamePads() MOZ_EXCLUDES(mMutex) {
+     MutexAutoLock autoLock(mMutex);
+-    nsTArray<GamepadAdded> gamepads;
++    nsTArray<GamepadState> gamepads;
+ 
+     for (const auto& elem : mGamepadAdded) {
+       gamepads.AppendElement(elem.second);
+@@ -157,7 +160,7 @@ class GamepadPlatformService final {
+   nsTArray<RefPtr<GamepadEventChannelParent>> mChannelParents
+       MOZ_GUARDED_BY(mMutex);
+ 
+-  std::map<GamepadHandle, GamepadAdded> mGamepadAdded MOZ_GUARDED_BY(mMutex);
++  std::map<GamepadHandle, GamepadState> mGamepadAdded MOZ_GUARDED_BY(mMutex);
+ };
+ 
+ }  // namespace mozilla::dom

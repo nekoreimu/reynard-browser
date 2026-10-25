@@ -1,0 +1,46 @@
+diff --git a/dom/gamepad/GamepadPoseState.h b/dom/gamepad/GamepadPoseState.h
+index 62ad953c62b6..378f18cbdf89 100644
+--- a/dom/gamepad/GamepadPoseState.h
++++ b/dom/gamepad/GamepadPoseState.h
+@@ -6,8 +6,8 @@
+ #define mozilla_dom_gamepad_GamepadPoseState_h_
+ 
+ #include <cstdint>
+-#include <cstring>
+ 
++#include "mozilla/Maybe.h"
+ #include "mozilla/TypedEnumBits.h"
+ 
+ namespace mozilla::dom {
+@@ -61,6 +61,8 @@ struct GamepadPoseState {
+   float linearAcceleration[3];
+   bool isPositionValid;
+   bool isOrientationValid;
++  Maybe<bool> isAngularVelocityValid;
++  Maybe<bool> isLinearAccelerationValid;
+ 
+   GamepadPoseState()
+       : flags(GamepadCapabilityFlags::Cap_None),
+@@ -94,18 +96,16 @@ struct GamepadPoseState {
+            linearAcceleration[1] == aPose.linearAcceleration[1] &&
+            linearAcceleration[2] == aPose.linearAcceleration[2] &&
+            isPositionValid == aPose.isPositionValid &&
+-           isOrientationValid == aPose.isOrientationValid;
++           isOrientationValid == aPose.isOrientationValid &&
++           isAngularVelocityValid == aPose.isAngularVelocityValid &&
++           isLinearAccelerationValid == aPose.isLinearAccelerationValid;
+   }
+ 
+   bool operator!=(const GamepadPoseState& aPose) const {
+     return !(*this == aPose);
+   }
+ 
+-  void Clear() {
+-    memset(&flags, 0,
+-           reinterpret_cast<char*>(&isOrientationValid) +
+-               sizeof(isOrientationValid) - reinterpret_cast<char*>(&flags));
+-  }
++  void Clear() { *this = GamepadPoseState(); }
+ };
+ 
+ }  // namespace mozilla::dom

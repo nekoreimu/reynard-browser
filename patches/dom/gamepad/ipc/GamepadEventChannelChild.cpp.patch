@@ -1,0 +1,66 @@
+diff --git a/dom/gamepad/ipc/GamepadEventChannelChild.cpp b/dom/gamepad/ipc/GamepadEventChannelChild.cpp
+index 24834adeb6de..704417ee4bb8 100644
+--- a/dom/gamepad/ipc/GamepadEventChannelChild.cpp
++++ b/dom/gamepad/ipc/GamepadEventChannelChild.cpp
+@@ -12,9 +12,16 @@ namespace {
+ 
+ class GamepadUpdateRunnable final : public Runnable {
+  public:
+-  explicit GamepadUpdateRunnable(const GamepadChangeEvent& aGamepadEvent)
+-      : Runnable("dom::GamepadUpdateRunnable"), mEvent(aGamepadEvent) {}
++  explicit GamepadUpdateRunnable(GamepadEventChannelChild* aChannel,
++                                 const GamepadChangeEvent& aGamepadEvent)
++      : Runnable("dom::GamepadUpdateRunnable"),
++        mChannel(aChannel),
++        mEvent(aGamepadEvent) {}
+   NS_IMETHOD Run() override {
++    if (!mChannel->CanSend()) {
++      return NS_OK;
++    }
++
+     RefPtr<GamepadManager> svc(GamepadManager::GetService());
+     if (svc) {
+       svc->Update(mEvent);
+@@ -23,6 +30,7 @@ class GamepadUpdateRunnable final : public Runnable {
+   }
+ 
+  protected:
++  RefPtr<GamepadEventChannelChild> mChannel;
+   GamepadChangeEvent mEvent;
+ };
+ 
+@@ -33,10 +41,17 @@ already_AddRefed<GamepadEventChannelChild> GamepadEventChannelChild::Create() {
+       .forget();
+ }
+ 
++void GamepadEventChannelChild::ActorDestroy(ActorDestroyReason aWhy) {
++  for (auto iter = mPromiseList.Iter(); !iter.Done(); iter.Next()) {
++    iter.Data()->MaybeResolve(false);
++  }
++  mPromiseList.Clear();
++}
++
+ mozilla::ipc::IPCResult GamepadEventChannelChild::RecvGamepadUpdate(
+     const GamepadChangeEvent& aGamepadEvent) {
+   DebugOnly<nsresult> rv =
+-      NS_DispatchToMainThread(new GamepadUpdateRunnable(aGamepadEvent));
++      NS_DispatchToMainThread(new GamepadUpdateRunnable(this, aGamepadEvent));
+   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "NS_DispatchToMainThread failed");
+   return IPC_OK();
+ }
+@@ -48,13 +63,13 @@ void GamepadEventChannelChild::AddPromise(const uint32_t& aID,
+ }
+ 
+ mozilla::ipc::IPCResult GamepadEventChannelChild::RecvReplyGamepadPromise(
+-    const uint32_t& aPromiseID) {
++    const uint32_t& aPromiseID, const bool& aSuccess) {
+   RefPtr<dom::Promise> p;
+   if (!mPromiseList.Get(aPromiseID, getter_AddRefs(p))) {
+     MOZ_CRASH("We should always have a promise.");
+   }
+ 
+-  p->MaybeResolve(true);
++  p->MaybeResolve(aSuccess);
+   mPromiseList.Remove(aPromiseID);
+   return IPC_OK();
+ }

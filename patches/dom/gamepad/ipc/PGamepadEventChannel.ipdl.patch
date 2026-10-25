@@ -1,0 +1,29 @@
+diff --git a/dom/gamepad/ipc/PGamepadEventChannel.ipdl b/dom/gamepad/ipc/PGamepadEventChannel.ipdl
+index b0c0e007e1aa..b72d66f930ca 100644
+--- a/dom/gamepad/ipc/PGamepadEventChannel.ipdl
++++ b/dom/gamepad/ipc/PGamepadEventChannel.ipdl
+@@ -16,17 +16,20 @@ protocol PGamepadEventChannel {
+     async __delete__();
+ 
+     [Tainted] async VibrateHaptic(GamepadHandle aHandle, uint32_t aHapticIndex,
+-                                  double aIntensity, double aDuration, [NoTaint=passback] uint32_t aPromiseID);
+-    [Tainted] async StopVibrateHaptic(GamepadHandle aHandle);
++                                  double aIntensity, double aDuration,
++                                  [NoTaint=allvalid] uint64_t aWindowId,
++                                  [NoTaint=passback] uint32_t aPromiseID);
++    [Tainted] async StopVibrateHaptic(GamepadHandle aHandle,
++                                      [NoTaint=allvalid] uint64_t aWindowId);
+     [Tainted] async LightIndicatorColor(GamepadHandle aHandle, uint32_t aLightColorIndex,
+                                         [NoTaint=allvalid] uint8_t aRed, [NoTaint=allvalid] uint8_t aGreen,
+                                         [NoTaint=allvalid] uint8_t aBlue, [NoTaint=passback] uint32_t aPromiseID);
+     async RequestAllGamepads()
+-        returns (GamepadAdded[] gamepads);
++        returns (GamepadState[] gamepads);
+ 
+   child:
+     async GamepadUpdate(GamepadChangeEvent aGamepadEvent);
+-    async ReplyGamepadPromise(uint32_t aPromiseID);
++    async ReplyGamepadPromise(uint32_t aPromiseID, bool aSuccess);
+ };
+ 
+ }

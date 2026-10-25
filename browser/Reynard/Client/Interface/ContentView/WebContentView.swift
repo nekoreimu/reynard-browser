@@ -37,6 +37,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private var pageBackgroundTopConstraint: NSLayoutConstraint?
     private var pageBackgroundBottomConstraint: NSLayoutConstraint?
     
+    private let contentContainerView = UIView()
     private let webView = GeckoView()
     private let pageBackgroundView = UIView()
     private let errorView = WebContentErrorView()
@@ -89,7 +90,8 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     private func configureHierarchy() {
-        backgroundColor = .systemBackground
+        contentContainerView.backgroundColor = .systemBackground
+        contentContainerView.translatesAutoresizingMaskIntoConstraints = false
         webView.translatesAutoresizingMaskIntoConstraints = false
         pageBackgroundView.translatesAutoresizingMaskIntoConstraints = false
         errorView.translatesAutoresizingMaskIntoConstraints = false
@@ -105,11 +107,12 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         errorView.isHidden = true
         refreshIndicator.hidesWhenStopped = false
         refreshIndicatorContainer.addSubview(refreshIndicator)
-        addSubview(scrollToTopTriggerView)
-        addSubview(pageBackgroundView)
-        addSubview(webView)
-        addSubview(refreshIndicatorContainer)
-        addSubview(errorView)
+        addSubview(contentContainerView)
+        contentContainerView.addSubview(scrollToTopTriggerView)
+        contentContainerView.addSubview(pageBackgroundView)
+        contentContainerView.addSubview(webView)
+        contentContainerView.addSubview(refreshIndicatorContainer)
+        contentContainerView.addSubview(errorView)
         resetRefreshIndicator()
         refreshIndicatorContainer.alpha = 0
     }
@@ -122,6 +125,11 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         pageBackgroundBottomConstraint = bottomConstraint
         
         NSLayoutConstraint.activate([
+            contentContainerView.topAnchor.constraint(equalTo: pageBackgroundView.topAnchor),
+            contentContainerView.bottomAnchor.constraint(equalTo: pageBackgroundView.bottomAnchor),
+            contentContainerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            contentContainerView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            
             scrollToTopTriggerView.topAnchor.constraint(equalTo: topAnchor),
             scrollToTopTriggerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollToTopTriggerView.trailingAnchor.constraint(equalTo: trailingAnchor),
@@ -168,7 +176,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func setFullscreen(_ fullscreen: Bool) {
         pageBackgroundView.isHidden = fullscreen
-        backgroundColor = fullscreen ? .black : .systemBackground
+        contentContainerView.backgroundColor = fullscreen ? .black : .systemBackground
     }
     
     func setVisibility(_ visibility: VisibilityState) {
@@ -260,20 +268,19 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func makeThumbnail() -> UIImage? {
         layoutIfNeeded()
-        let captureBounds = thumbnailBounds
+        let captureBounds = contentContainerView.bounds
         guard captureBounds.width > 1, captureBounds.height > 1 else {
             return nil
         }
         
         let renderer = UIGraphicsImageRenderer(size: captureBounds.size)
-        return renderer.image { context in
-            context.cgContext.translateBy(x: -captureBounds.minX, y: -captureBounds.minY)
-            drawHierarchy(in: bounds, afterScreenUpdates: false)
+        return renderer.image { _ in
+            contentContainerView.drawHierarchy(in: captureBounds, afterScreenUpdates: false)
         }
     }
     
     private var thumbnailBounds: CGRect {
-        return bounds.union(pageBackgroundView.frame)
+        return convert(contentContainerView.bounds, from: contentContainerView)
     }
     
     var onErrorAction: ((WebContentErrorView.Action) -> Void)? {

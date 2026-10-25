@@ -36,10 +36,9 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
         for: .systemFont(ofSize: UX.titleFontSize, weight: .semibold)
     )
     
-    private let folderBackgroundView: UIView = {
-        let view = UIView()
+    private let folderBackgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .systemGray5
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.iconCornerRadius
         view.clipsToBounds = true
@@ -102,6 +101,14 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
         super.layoutSubviews()
         updateFolderSize()
     }
+
+    override func apply(_ layoutAttributes: UICollectionViewLayoutAttributes) {
+        super.apply(layoutAttributes)
+        alpha = 1
+        emptyIconView.alpha = layoutAttributes.alpha
+        previewGridView.alpha = layoutAttributes.alpha
+        titleLabel.alpha = layoutAttributes.alpha
+    }
     
     func configure(
         folder: BookmarkFolderSnapshot,
@@ -136,8 +143,8 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
     
     private func configureHierarchy() {
         contentView.addSubview(folderBackgroundView)
-        folderBackgroundView.addSubview(emptyIconView)
-        folderBackgroundView.addSubview(previewGridView)
+        folderBackgroundView.contentView.addSubview(emptyIconView)
+        folderBackgroundView.contentView.addSubview(previewGridView)
         contentView.addSubview(titleLabel)
     }
     

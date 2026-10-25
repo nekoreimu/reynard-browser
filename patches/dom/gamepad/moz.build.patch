@@ -1,0 +1,13 @@
+diff --git a/dom/gamepad/moz.build b/dom/gamepad/moz.build
+index ad946302dd94..1d326da4e695 100644
+--- a/dom/gamepad/moz.build
++++ b/dom/gamepad/moz.build
+@@ -53,6 +53,8 @@ UNIFIED_SOURCES = [
+ 
+ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+     UNIFIED_SOURCES += ["cocoa/CocoaGamepad.cpp"]
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
++    pass
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+     UNIFIED_SOURCES += ["windows/WindowsGamepad.cpp"]
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":

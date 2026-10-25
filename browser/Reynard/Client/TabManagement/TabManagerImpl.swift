@@ -65,10 +65,6 @@ final class TabManagerImplementation: NSObject, TabManager {
     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
     private var selectionCounter = 0
     
-    // A background termination may be reported after the app becomes active.
-    // Keep the session eligible for silent recovery until a foreground composite confirms it survived.
-    private weak var sessionEligibleForSilentRecovery: GeckoSession?
-    
     private lazy var lenientURLExpression: NSRegularExpression = {
         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
         return try! NSRegularExpression(pattern: pattern)
@@ -96,10 +92,6 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     // MARK: - Application Lifecycle
-    
-    func applicationWillResignActive() {
-        sessionEligibleForSilentRecovery = selectedTab?.session
-    }
     
     func applicationDidBecomeActive() {
         guard selectedTab?.session.isOpen() == false else {
@@ -590,18 +582,12 @@ final class TabManagerImplementation: NSObject, TabManager {
         )
     }
     
-    private func handleSessionTermination(_ session: GeckoSession) {
+    private func handleSessionTermination(_ session: GeckoSession, recoverAutomatically: Bool) {
         DownloadStore.shared.failCapturedDownloads(for: session)
         sessionManager.clearExternalResponseRetention(for: session)
         
         guard let location = tabLocation(for: session) else {
             return
-        }
-        
-        let wasAwaitingForegroundComposite =
-        sessionEligibleForSilentRecovery === session
-        if wasAwaitingForegroundComposite {
-            sessionEligibleForSilentRecovery = nil
         }
         
         let didTerminateSelectedTab = selectedTab?.session === session
@@ -624,7 +610,7 @@ final class TabManagerImplementation: NSObject, TabManager {
             return
         }
         
-        if wasAwaitingForegroundComposite {
+        if recoverAutomatically {
             selectTab(at: location.index, mode: location.mode)
         } else {
             delegate?.tabManagerDidTerminateSelectedTab(self)
@@ -971,7 +957,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         let shouldNavigateDirectly = lenientURLExpression.firstMatch(in: navigationInput, range: navigationInputRange) != nil
         
         if shouldNavigateDirectly {
-            loadURL(navigationInput, in: tab)
+            loadURL(URLUtils.fixTLDTypo(in: navigationInput), in: tab)
             return
         }
         
@@ -1283,7 +1269,6 @@ extension TabManagerImplementation: SystemMediaSessionPlaybackObserver {
                 notifyUpdate(at: location.index, mode: location.mode, reason: .audio)
             }
         }
-        delegate?.tabManager(self, didChangeMediaPlayback: playbackState == .playing, for: session)
     }
 }
 
@@ -1357,14 +1342,9 @@ extension TabManagerImplementation: ContentDelegate {
             return
         }
         
-        let mediaIsPlaying = systemMediaSession.selectedSnapshot.map {
-            $0.session === session && $0.playbackState == .playing
-        } ?? false
-        
         delegate?.tabManager(
             self,
             didChangeFullscreen: fullScreen,
-            mediaIsPlaying: mediaIsPlaying,
             for: session
         )
     }
@@ -1388,21 +1368,14 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onCrash(session: GeckoSession) {
-        handleSessionTermination(session)
+        handleSessionTermination(session, recoverAutomatically: false)
     }
     
     func onKill(session: GeckoSession) {
-        handleSessionTermination(session)
+        handleSessionTermination(session, recoverAutomatically: true)
     }
     
-    func onFirstComposite(session: GeckoSession) {
-        guard sessionManager.isApplicationActive,
-              sessionEligibleForSilentRecovery === session else {
-            return
-        }
-        
-        sessionEligibleForSilentRecovery = nil
-    }
+    func onFirstComposite(session: GeckoSession) {}
     
     func onFirstContentfulPaint(session: GeckoSession) {}
     

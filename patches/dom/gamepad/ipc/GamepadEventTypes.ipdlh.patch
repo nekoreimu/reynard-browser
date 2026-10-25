@@ -1,0 +1,27 @@
+diff --git a/dom/gamepad/ipc/GamepadEventTypes.ipdlh b/dom/gamepad/ipc/GamepadEventTypes.ipdlh
+index 6cf2d6219c49..c860471b60f8 100644
+--- a/dom/gamepad/ipc/GamepadEventTypes.ipdlh
++++ b/dom/gamepad/ipc/GamepadEventTypes.ipdlh
+@@ -39,6 +39,14 @@ struct GamepadButtonInformation {
+   bool touched;
+ };
+ 
++struct GamepadState {
++  GamepadAdded added;
++  GamepadButtonInformation[] buttons;
++  GamepadAxisInformation[] axes;
++  GamepadTouchState[] touches;
++  GamepadPoseState pose;
++};
++
+ struct GamepadPoseInformation {
+   GamepadPoseState pose_state;
+ };
+@@ -59,6 +67,7 @@ struct GamepadTouchInformation {
+ 
+ union GamepadChangeEventBody {
+   GamepadAdded;
++  GamepadState;
+   GamepadRemoved;
+   GamepadAxisInformation;
+   GamepadButtonInformation;

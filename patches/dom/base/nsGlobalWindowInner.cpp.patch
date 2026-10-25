@@ -1,0 +1,13 @@
+diff --git a/dom/base/nsGlobalWindowInner.cpp b/dom/base/nsGlobalWindowInner.cpp
+index 49a25262caf3..47de4dda8d02 100644
+--- a/dom/base/nsGlobalWindowInner.cpp
++++ b/dom/base/nsGlobalWindowInner.cpp
+@@ -7086,7 +7086,7 @@ void nsGlobalWindowInner::SyncGamepadState() {
+ void nsGlobalWindowInner::StopGamepadHaptics() {
+   if (mHasSeenGamepadInput) {
+     RefPtr<GamepadManager> gamepadManager(GamepadManager::GetService());
+-    gamepadManager->StopHaptics();
++    gamepadManager->StopHaptics(this);
+   }
+ }
+ 

@@ -1,0 +1,14 @@
+diff --git a/dom/gamepad/GamepadTouch.h b/dom/gamepad/GamepadTouch.h
+index 787e10eff0a0..5c56253cf317 100644
+--- a/dom/gamepad/GamepadTouch.h
++++ b/dom/gamepad/GamepadTouch.h
+@@ -28,8 +28,8 @@ class GamepadTouch final : public nsWrapperCache {
+   void GetSurfaceDimensions(JSContext* aCx,
+                             JS::MutableHandle<JSObject*> aRetval,
+                             ErrorResult& aRv);
++  const GamepadTouchState& GetTouchState() const { return mTouchState; }
+   void SetTouchState(const GamepadTouchState& aTouch);
+-  void Set(const GamepadTouch* aOther);
+ 
+  private:
+   virtual ~GamepadTouch();

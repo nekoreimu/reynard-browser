@@ -227,6 +227,10 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     
     @MainActor
     func addonController(_ controller: AddonRuntime, promptFor prompt: AddonPermissionPrompt) async -> AddonPermissionPromptResponse {
+        if let response = AddonImporter.installationResponse(for: prompt) {
+            return response
+        }
+        
         let presentPrompt: @MainActor (AddonPermissionPrompt) async -> AddonPermissionPromptResponse = { prompt in
             await withCheckedContinuation { continuation in
                 guard let delegate = self.delegate else {
@@ -288,6 +292,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
             return
         }
         
+        let isImportingAddon = AddonImporter.importingAddonIDs.contains(addon.id)
         let createTab: () -> Void = { [weak self] in
             self?.createAddonTab(
                 selecting: true,
@@ -296,7 +301,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
             )
         }
         
-        if delegate?.dismissAddonModal(self, completion: createTab) == true {
+        if !isImportingAddon, delegate?.dismissAddonModal(self, completion: createTab) == true {
             return
         }
         
@@ -372,7 +377,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     }
     
     func addonController(_ controller: AddonRuntime, createNewTabFor addon: Addon, details: AddonCreateTabDetails, newSessionID: String) -> Bool {
-        _ = addon
+        let isImportingAddon = AddonImporter.importingAddonIDs.contains(addon.id)
         let createTab: () -> Void = { [weak self] in
             self?.createAddonTab(
                 selecting: details.active ?? true,
@@ -382,7 +387,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
             )
         }
         
-        if delegate?.dismissAddonModal(self, completion: createTab) != true {
+        if isImportingAddon || delegate?.dismissAddonModal(self, completion: createTab) != true {
             createTab()
         }
         return true

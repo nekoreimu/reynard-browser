@@ -1,0 +1,14 @@
+diff --git a/dom/gamepad/ipc/GamepadMessageUtils.h b/dom/gamepad/ipc/GamepadMessageUtils.h
+index 542826b057ba..ad064daf599d 100644
+--- a/dom/gamepad/ipc/GamepadMessageUtils.h
++++ b/dom/gamepad/ipc/GamepadMessageUtils.h
+@@ -40,7 +40,8 @@ DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::dom::GamepadPoseState, flags,
+                                   orientation, position, angularVelocity,
+                                   angularAcceleration, linearVelocity,
+                                   linearAcceleration, isPositionValid,
+-                                  isOrientationValid);
++                                  isOrientationValid, isAngularVelocityValid,
++                                  isLinearAccelerationValid);
+ 
+ DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::dom::GamepadTouchState, touchId,
+                                   surfaceId, position, surfaceDimensions,

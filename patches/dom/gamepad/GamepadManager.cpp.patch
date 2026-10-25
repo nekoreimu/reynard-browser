@@ -1,0 +1,245 @@
+diff --git a/dom/gamepad/GamepadManager.cpp b/dom/gamepad/GamepadManager.cpp
+index 9d0687fad7d3..a0b2b9b99565 100644
+--- a/dom/gamepad/GamepadManager.cpp
++++ b/dom/gamepad/GamepadManager.cpp
+@@ -45,6 +45,32 @@ StaticRefPtr<GamepadManager> gGamepadManagerSingleton;
+ // intent.
+ const float AXIS_FIRST_INTENT_THRESHOLD_VALUE = 0.1f;
+ 
++void ApplyInitialState(Gamepad* aGamepad, const GamepadState& aState) {
++  for (const auto& button : aState.buttons()) {
++    aGamepad->SetButton(button.button(), button.pressed(), button.touched(),
++                        button.value());
++  }
++  for (const auto& axis : aState.axes()) {
++    aGamepad->SetAxis(axis.axis(), axis.value());
++  }
++  for (uint32_t i = 0; i < aState.touches().Length(); ++i) {
++    aGamepad->SetTouchEvent(i, aState.touches()[i]);
++  }
++  aGamepad->SetPose(aState.pose());
++}
++
++nsGlobalWindowInner* OutputWindow(nsIGlobalObject* aGlobal) {
++  auto* window = nsGlobalWindowInner::Cast(aGlobal->GetAsInnerWindow());
++  Document* document = window ? window->GetExtantDoc() : nullptr;
++  if (!document || !document->IsFullyActive()) {
++    return nullptr;
++  }
++  if (document->Hidden() || window->GetOuterWindow()->IsBackground()) {
++    return nullptr;
++  }
++  return window;
++}
++
+ }  // namespace
+ 
+ NS_IMPL_ISUPPORTS(GamepadManager, nsIObserver)
+@@ -165,6 +191,10 @@ void GamepadManager::RemoveListener(nsGlobalWindowInner* aWindow) {
+     return;  // doesn't exist
+   }
+ 
++#ifdef MOZ_WIDGET_UIKIT
++  StopHaptics(aWindow);
++#endif
++
+   for (const auto& key : mGamepads.Keys()) {
+     aWindow->RemoveGamepad(key);
+   }
+@@ -191,13 +221,17 @@ void GamepadManager::AddGamepad(GamepadHandle aHandle, const nsAString& aId,
+                                 uint32_t aNumButtons, uint32_t aNumAxes,
+                                 uint32_t aNumHaptics,
+                                 uint32_t aNumLightIndicator,
+-                                uint32_t aNumTouchEvents) {
++                                uint32_t aNumTouchEvents,
++                                const GamepadState* aState) {
+   // TODO: bug 852258: get initial button/axis state
+   RefPtr<Gamepad> newGamepad =
+       new Gamepad(nullptr, aId,
+                   0,  // index is set by global window
+                   aHandle, aMapping, aHand, aNumButtons, aNumAxes, aNumHaptics,
+                   aNumLightIndicator, aNumTouchEvents);
++  if (aState) {
++    ApplyInitialState(newGamepad, *aState);
++  }
+ 
+   // We store the gamepad related to its index given by the parent process,
+   // and no duplicate index is allowed.
+@@ -479,11 +513,17 @@ void GamepadManager::Update(const GamepadChangeEvent& aEvent) {
+ 
+   const GamepadChangeEventBody& body = aEvent.body();
+ 
+-  if (body.type() == GamepadChangeEventBody::TGamepadAdded) {
+-    const GamepadAdded& a = body.get_GamepadAdded();
++  if (body.type() == GamepadChangeEventBody::TGamepadAdded ||
++      body.type() == GamepadChangeEventBody::TGamepadState) {
++    const GamepadState* state =
++        body.type() == GamepadChangeEventBody::TGamepadState
++            ? &body.get_GamepadState()
++            : nullptr;
++    const GamepadAdded& a = state ? state->added() : body.get_GamepadAdded();
+     AddGamepad(handle, a.id(), static_cast<GamepadMappingType>(a.mapping()),
+                static_cast<GamepadHand>(a.hand()), a.num_buttons(),
+-               a.num_axes(), a.num_haptics(), a.num_lights(), a.num_touches());
++               a.num_axes(), a.num_haptics(), a.num_lights(), a.num_touches(),
++               state);
+     return;
+   }
+   if (body.type() == GamepadChangeEventBody::TGamepadRemoved) {
+@@ -562,8 +602,15 @@ bool GamepadManager::SetGamepadByEvent(const GamepadChangeEvent& aEvent,
+   bool firstTime = false;
+ 
+   GamepadHandle handle = aEvent.handle();
++  const GamepadChangeEventBody& body = aEvent.body();
+ 
+   if (aWindow) {
++    if (handle.GetKind() == GamepadHandleKind::GamepadPlatformManager &&
++        body.type() == GamepadChangeEventBody::TGamepadPoseInformation &&
++        !WindowHasSeenGamepad(aWindow, handle)) {
++      return false;
++    }
++
+     if (!AxisMoveIsFirstIntent(aWindow, handle, aEvent)) {
+       return false;
+     }
+@@ -572,7 +619,6 @@ bool GamepadManager::SetGamepadByEvent(const GamepadChangeEvent& aEvent,
+ 
+   RefPtr<Gamepad> gamepad =
+       aWindow ? aWindow->GetGamepad(handle) : GetGamepad(handle);
+-  const GamepadChangeEventBody& body = aEvent.body();
+ 
+   if (gamepad) {
+     switch (body.type()) {
+@@ -599,15 +645,8 @@ bool GamepadManager::SetGamepadByEvent(const GamepadChangeEvent& aEvent,
+       }
+       case GamepadChangeEventBody::TGamepadTouchInformation: {
+         // Avoid GamepadTouch's touchId be accessed in cross-origin tracking.
+-        for (uint32_t i = 0; i < mListeners.Length(); i++) {
+-          RefPtr<Gamepad> listenerGamepad = mListeners[i]->GetGamepad(handle);
+-          if (listenerGamepad && mListeners[i]->IsCurrentInnerWindow() &&
+-              !mListeners[i]->GetOuterWindow()->IsBackground()) {
+-            const GamepadTouchInformation& a =
+-                body.get_GamepadTouchInformation();
+-            listenerGamepad->SetTouchEvent(a.index(), a.touch_state());
+-          }
+-        }
++        const GamepadTouchInformation& a = body.get_GamepadTouchInformation();
++        gamepad->SetTouchEvent(a.index(), a.touch_state());
+         break;
+       }
+       case GamepadChangeEventBody::TGamepadHandInformation: {
+@@ -663,32 +702,34 @@ already_AddRefed<Promise> GamepadManager::VibrateHaptic(
+     aRv.Throw(NS_ERROR_FAILURE);
+     return nullptr;
+   }
+-  if (StaticPrefs::dom_gamepad_haptic_feedback_enabled()) {
+-    if (aHandle.GetKind() == GamepadHandleKind::VR) {
+-      if (gfx::VRManagerChild::IsCreated()) {
+-        gfx::VRManagerChild* vm = gfx::VRManagerChild::Get();
+-        vm->AddPromise(mPromiseID, promise);
+-        vm->SendVibrateHaptic(aHandle, aHapticIndex, aIntensity, aDuration,
+-                              mPromiseID);
+-      }
++  nsGlobalWindowInner* window = OutputWindow(aGlobal);
++  if (!StaticPrefs::dom_gamepad_haptic_feedback_enabled() || !window) {
++    promise->MaybeResolve(false);
++    return promise.forget();
++  }
++
++  if (aHandle.GetKind() == GamepadHandleKind::VR) {
++    if (gfx::VRManagerChild::IsCreated()) {
++      gfx::VRManagerChild* vm = gfx::VRManagerChild::Get();
++      vm->AddPromise(mPromiseID, promise);
++      vm->SendVibrateHaptic(aHandle, aHapticIndex, aIntensity, aDuration,
++                            mPromiseID);
+     } else {
+-      if (mChannelChild) {
+-        mChannelChild->AddPromise(mPromiseID, promise);
+-        mChannelChild->SendVibrateHaptic(aHandle, aHapticIndex, aIntensity,
+-                                         aDuration, mPromiseID);
+-      }
++      promise->MaybeResolve(false);
+     }
++  } else if (mChannelChild && mChannelChild->CanSend()) {
++    mChannelChild->AddPromise(mPromiseID, promise);
++    mChannelChild->SendVibrateHaptic(aHandle, aHapticIndex, aIntensity,
++                                     aDuration, window->WindowID(), mPromiseID);
++  } else {
++    promise->MaybeResolve(false);
+   }
+ 
+   ++mPromiseID;
+   return promise.forget();
+ }
+ 
+-void GamepadManager::StopHaptics() {
+-  if (!StaticPrefs::dom_gamepad_haptic_feedback_enabled()) {
+-    return;
+-  }
+-
++void GamepadManager::StopHaptics(nsGlobalWindowInner* aWindow) {
+   for (const auto& entry : mGamepads) {
+     const GamepadHandle handle = entry.GetWeak()->GetHandle();
+     if (handle.GetKind() == GamepadHandleKind::VR) {
+@@ -696,10 +737,8 @@ void GamepadManager::StopHaptics() {
+         gfx::VRManagerChild* vm = gfx::VRManagerChild::Get();
+         vm->SendStopVibrateHaptic(handle);
+       }
+-    } else {
+-      if (mChannelChild) {
+-        mChannelChild->SendStopVibrateHaptic(handle);
+-      }
++    } else if (mChannelChild && mChannelChild->CanSend()) {
++      mChannelChild->SendStopVibrateHaptic(handle, aWindow->WindowID());
+     }
+   }
+ }
+@@ -712,17 +751,18 @@ already_AddRefed<Promise> GamepadManager::SetLightIndicatorColor(
+     aRv.Throw(NS_ERROR_FAILURE);
+     return nullptr;
+   }
+-  if (StaticPrefs::dom_gamepad_extensions_lightindicator()) {
+-    MOZ_RELEASE_ASSERT(aHandle.GetKind() != GamepadHandleKind::VR,
+-                       "We don't support light indicator in VR.");
+-
+-    if (mChannelChild) {
+-      mChannelChild->AddPromise(mPromiseID, promise);
+-      mChannelChild->SendLightIndicatorColor(aHandle, aLightColorIndex, aRed,
+-                                             aGreen, aBlue, mPromiseID);
+-    }
++  if (!StaticPrefs::dom_gamepad_extensions_lightindicator() ||
++      !OutputWindow(aGlobal) || !mChannelChild || !mChannelChild->CanSend()) {
++    promise->MaybeResolve(false);
++    return promise.forget();
+   }
+ 
++  MOZ_RELEASE_ASSERT(aHandle.GetKind() != GamepadHandleKind::VR,
++                     "We don't support light indicator in VR.");
++
++  mChannelChild->AddPromise(mPromiseID, promise);
++  mChannelChild->SendLightIndicatorColor(aHandle, aLightColorIndex, aRed,
++                                         aGreen, aBlue, mPromiseID);
+   ++mPromiseID;
+   return promise.forget();
+ }
+@@ -740,16 +780,18 @@ already_AddRefed<Promise> GamepadManager::RequestAllGamepads(
+   }
+ 
+   mChannelChild->SendRequestAllGamepads(
+-      [promise](const nsTArray<GamepadAdded>& aAddedGamepads) {
++      [promise](const nsTArray<GamepadState>& aGamepadStates) {
+         nsTArray<RefPtr<Gamepad>> gamepads;
+ 
+-        for (const auto& addedGamepad : aAddedGamepads) {
++        for (const auto& state : aGamepadStates) {
++          const auto& addedGamepad = state.added();
+           RefPtr<Gamepad> gamepad =
+               new Gamepad(nullptr, addedGamepad.id(), 0, GamepadHandle(),
+                           addedGamepad.mapping(), addedGamepad.hand(),
+                           addedGamepad.num_buttons(), addedGamepad.num_axes(),
+                           addedGamepad.num_haptics(), addedGamepad.num_lights(),
+                           addedGamepad.num_touches());
++          ApplyInitialState(gamepad, state);
+           gamepads.AppendElement(gamepad);
+         }
+         promise->MaybeResolve(gamepads);

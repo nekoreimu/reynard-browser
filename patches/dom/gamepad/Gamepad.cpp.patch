@@ -1,0 +1,26 @@
+diff --git a/dom/gamepad/Gamepad.cpp b/dom/gamepad/Gamepad.cpp
+index 3848684ea8ec..6061aa9706fd 100644
+--- a/dom/gamepad/Gamepad.cpp
++++ b/dom/gamepad/Gamepad.cpp
+@@ -135,8 +135,10 @@ void Gamepad::SetTouchEvent(uint32_t aTouchIndex,
+ 
+   // Handling cross-origin tracking.
+   GamepadTouchState touchState(aTouch);
+-  touchState.touchId = mTouchIdHash.LookupOrInsertWith(
+-      touchState.touchId, [&] { return mTouchIdHashValue++; });
++  if (mParent) {
++    touchState.touchId = mTouchIdHash.LookupOrInsertWith(
++        touchState.touchId, [&] { return mTouchIdHashValue++; });
++  }
+   mTouchEvents[aTouchIndex]->SetTouchState(touchState);
+   UpdateTimestamp();
+ }
+@@ -180,7 +182,7 @@ void Gamepad::SyncState(Gamepad* aOther) {
+     }
+     if (StaticPrefs::dom_gamepad_extensions_multitouch()) {
+       for (uint32_t i = 0; i < mTouchEvents.Length(); ++i) {
+-        mTouchEvents[i]->Set(aOther->mTouchEvents[i]);
++        SetTouchEvent(i, aOther->mTouchEvents[i]->GetTouchState());
+       }
+     }
+   }

@@ -1,0 +1,31 @@
+diff --git a/dom/gamepad/GamepadManager.h b/dom/gamepad/GamepadManager.h
+index 92b96b7371bf..2e6c307e65c6 100644
+--- a/dom/gamepad/GamepadManager.h
++++ b/dom/gamepad/GamepadManager.h
+@@ -25,6 +25,7 @@ class EventTarget;
+ class Gamepad;
+ class GamepadChangeEvent;
+ class GamepadEventChannelChild;
++class GamepadState;
+ 
+ class GamepadManager final : public nsIObserver {
+  public:
+@@ -48,7 +49,8 @@ class GamepadManager final : public nsIObserver {
+   void AddGamepad(GamepadHandle aHandle, const nsAString& aID,
+                   GamepadMappingType aMapping, GamepadHand aHand,
+                   uint32_t aNumButtons, uint32_t aNumAxes, uint32_t aNumHaptics,
+-                  uint32_t aNumLightIndicator, uint32_t aNumTouchEvents);
++                  uint32_t aNumLightIndicator, uint32_t aNumTouchEvents,
++                  const GamepadState* aState = nullptr);
+ 
+   // Remove the gamepad at |aIndex| from the list of known gamepads.
+   void RemoveGamepad(GamepadHandle aHandle);
+@@ -70,7 +72,7 @@ class GamepadManager final : public nsIObserver {
+                                           nsIGlobalObject* aGlobal,
+                                           ErrorResult& aRv);
+   // Send stop haptic events to gamepad channels.
+-  void StopHaptics();
++  void StopHaptics(nsGlobalWindowInner* aWindow);
+ 
+   // Set light indicator color event to gamepad channels.
+   already_AddRefed<Promise> SetLightIndicatorColor(GamepadHandle aHandle,

@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import ZIPFoundation
 
 enum AddonIconLoader {
     static func loadImage(from iconURLString: String?, targetSize: CGSize) -> UIImage? {
@@ -47,11 +48,17 @@ enum AddonIconLoader {
         guard components.count == 2,
               let archiveURL = URL(string: components[0]),
               archiveURL.isFileURL,
-              let archiveData = try? Data(contentsOf: archiveURL) else {
+              let archive = try? Archive(url: archiveURL, accessMode: .read),
+              let entry = archive[components[1]] else {
             return nil
         }
         
-        return ZipArchiveReader.entryData(in: archiveData, path: components[1])
+        var data = Data()
+        let checksum = try? archive.extract(entry) { data.append($0) }
+        guard checksum == entry.checksum else {
+            return nil
+        }
+        return data
     }
     
     private static func resizedImage(from image: UIImage, targetSize: CGSize) -> UIImage? {
