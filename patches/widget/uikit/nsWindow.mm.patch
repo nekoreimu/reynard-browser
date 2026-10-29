@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index c1c4c3deb341..0501b63b2df6 100644
+index c1c4c3deb341..db9c9c679c87 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
 @@ -11,12 +11,15 @@
@@ -53,7 +53,7 @@ index c1c4c3deb341..0501b63b2df6 100644
 +#include "mozilla/dom/WindowGlobalParent.h"
 +#include "mozilla/gfx/GPUProcessManager.h"
  #include "mozilla/gfx/Logging.h"
-+#include "mozilla/layers/APZInputBridge.h"
++#include "mozilla/layers/APZBridge.h"
 +#include "mozilla/layers/CompositorScrollUpdate.h"
 +#include "mozilla/layers/CompositorSession.h"
 +#include "mozilla/layers/CompositorThread.h"
@@ -988,14 +988,14 @@ index c1c4c3deb341..0501b63b2df6 100644
 +  [mNativeView setNeedsLayout];
 +  [mNativeView setNeedsDisplayInRect:DevPixelsToUIKitPoints(
 +                                         mBounds, BackingScaleFactor())];
-+}
-+
+ }
+ 
 +void nsWindow::PaintWindow() {
 +  if (mWidgetListener) {
 +    mWidgetListener->PaintWindow(this);
 +  }
- }
- 
++}
++
 +// Text input
 +
  void nsWindow::SetInputContext(const InputContext& aContext,
@@ -1400,7 +1400,7 @@ index c1c4c3deb341..0501b63b2df6 100644
  EventDispatcher* nsWindow::GetEventDispatcher() const {
    if (mIOSView) {
      return mIOSView->mEventDispatcher;
-@@ -1206,28 +1709,133 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
+@@ -1206,28 +1709,131 @@ - (UIAccessibilityContainerType)accessibilityContainerType {
    return nullptr;
  }
  
@@ -1442,7 +1442,7 @@ index c1c4c3deb341..0501b63b2df6 100644
 +  APZEventResult result;
 +  if (mAPZC) {
 +    MOZ_ASSERT(APZThreadUtils::IsControllerThread());
-+    result = mAPZC->InputBridge()->ReceiveInputEvent(aInput);
++    result = mAPZC->Bridge()->ReceiveInputEvent(aInput);
 +    if (result.GetStatus() == nsEventStatus_eConsumeNoDefault) {
 +      return;
 +    }
@@ -1450,9 +1450,7 @@ index c1c4c3deb341..0501b63b2df6 100644
 +
 +  WidgetWheelEvent event = aInput.ToWidgetEvent(this);
 +  if (mAPZC) {
-+    event = MayStartSwipeForAPZ(aInput, result);
-+  } else if (MayStartSwipeForNonAPZ(aInput)) {
-+    return;
++    event = MayStartSwipe(aInput, result);
 +  }
 +
 +  ProcessUntransformedAPZEvent(&event, result);
@@ -1472,13 +1470,13 @@ index c1c4c3deb341..0501b63b2df6 100644
 +    return;
 +  }
 +
-+  APZInputBridge::InputBlockCallback callback =
++  APZBridge::InputBlockCallback callback =
 +      [window = RefPtr{this}, aSequenceId](
 +          uint64_t, const APZHandledResult& aHandledResult) {
 +        window->NotifyAPZInputResult(aSequenceId, aHandledResult);
 +      };
 +  APZEventResult result =
-+      mAPZC->InputBridge()->ReceiveInputEvent(aInput, std::move(callback));
++      mAPZC->Bridge()->ReceiveInputEvent(aInput, std::move(callback));
 +
 +  if (result.GetStatus() != nsEventStatus_eConsumeNoDefault) {
 +    WidgetTouchEvent event = aInput.ToWidgetEvent(this);
@@ -1548,7 +1546,7 @@ index c1c4c3deb341..0501b63b2df6 100644
  NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
  
  nsresult IOSView::GetInitData(JSContext* aCx,
-@@ -1248,6 +1856,141 @@ - (UIView*)view {
+@@ -1248,6 +1854,141 @@ - (UIView*)view {
    return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
  }
  
@@ -1690,7 +1688,7 @@ index c1c4c3deb341..0501b63b2df6 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1261,6 +2004,7 @@ - (void)close {
+@@ -1261,6 +2002,7 @@ - (void)close {
      outerWin->ForceClose();
    }
  }

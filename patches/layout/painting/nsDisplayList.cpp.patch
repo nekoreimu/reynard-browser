@@ -1,5 +1,5 @@
 diff --git a/layout/painting/nsDisplayList.cpp b/layout/painting/nsDisplayList.cpp
-index 53ce0c07eef1..e485803f2b77 100644
+index 6336d01f96f1..e32a20f6351a 100644
 --- a/layout/painting/nsDisplayList.cpp
 +++ b/layout/painting/nsDisplayList.cpp
 @@ -6240,6 +6240,21 @@ nsDisplayAsyncZoom::nsDisplayAsyncZoom(

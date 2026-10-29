@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/ProcessHangMonitor.cpp b/dom/ipc/ProcessHangMonitor.cpp
-index ff1b92365a31..cdcbd9b4b3e5 100644
+index 880e469cbae4..ee3842d6d654 100644
 --- a/dom/ipc/ProcessHangMonitor.cpp
 +++ b/dom/ipc/ProcessHangMonitor.cpp
 @@ -45,11 +45,18 @@
@@ -141,7 +141,7 @@ index ff1b92365a31..cdcbd9b4b3e5 100644
  void HangMonitorParent::SetMainThreadQoSPriorityOnThread(
      nsIThread::QoSPriority aQoSPriority) {
    MOZ_RELEASE_ASSERT(IsOnThread());
-@@ -1209,8 +1250,8 @@ ProcessHangMonitor::ProcessHangMonitor() : mCPOWTimeout(false) {
+@@ -1209,8 +1250,8 @@ ProcessHangMonitor::ProcessHangMonitor() : mReplyTimeout(false) {
    if (NS_FAILED(NS_NewNamedThread("ProcessHangMon", getter_AddRefs(mThread)))) {
      mThread = nullptr;
    }

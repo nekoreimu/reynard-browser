@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentParent.h b/dom/ipc/ContentParent.h
-index d313dd619bb0..e0b3e4f68478 100644
+index cffb55b774c4..dc38719d9502 100644
 --- a/dom/ipc/ContentParent.h
 +++ b/dom/ipc/ContentParent.h
-@@ -640,6 +640,9 @@ class ContentParent final : public PContentParent,
+@@ -638,6 +638,9 @@ class ContentParent final : public PContentParent,
        nsIRemoteTab::NavigationType aNavigationType,
        const CancelContentJSOptions& aCancelContentJSOptions);
  
@@ -12,7 +12,7 @@ index d313dd619bb0..e0b3e4f68478 100644
    void SetMainThreadQoSPriority(nsIThread::QoSPriority aQoSPriority);
  
    // This is called when we are about to load a document for a content process.
-@@ -733,6 +736,9 @@ class ContentParent final : public PContentParent,
+@@ -731,6 +734,9 @@ class ContentParent final : public PContentParent,
  
    bool WasA11yEverActivated() const { return mWasA11yEverActivated; }
  

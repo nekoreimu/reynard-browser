@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
-index 202f922d9773..455a749cfa74 100644
+index e7ac12f052d6..e470b2d255a3 100644
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
 @@ -1639,6 +1639,10 @@ bool ContentParent::ShutDownProcess(ShutDownMethod aMethod) {
@@ -13,7 +13,7 @@ index 202f922d9773..455a749cfa74 100644
          // Adjust the QoS priorities for shutdown, if they exist.
          if (StaticPrefs::threads_use_low_power_enabled() &&
              StaticPrefs::
-@@ -2533,6 +2537,11 @@ bool ContentParent::LaunchSubprocessResolve(bool aIsSync,
+@@ -2532,6 +2536,11 @@ bool ContentParent::LaunchSubprocessResolve(bool aIsSync,
  
    mHangMonitorActor = ProcessHangMonitor::AddProcess(this);
  
@@ -25,7 +25,7 @@ index 202f922d9773..455a749cfa74 100644
    SetReplyTimeoutMs(StaticPrefs::dom_ipc_reply_timeout());
  
    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-@@ -2944,14 +2953,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
+@@ -2943,14 +2952,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -43,7 +43,7 @@ index 202f922d9773..455a749cfa74 100644
    } else {
      // This can fail if we've already started shutting down the compositor
      // thread. See Bug 1562763 comment 8. On Android this can fail we are are
-@@ -3123,16 +3133,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
+@@ -3122,16 +3132,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -63,7 +63,7 @@ index 202f922d9773..455a749cfa74 100644
  }
  
  void ContentParent::OnCompositorDeviceReset() {
-@@ -3888,9 +3899,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
+@@ -3887,9 +3898,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
  
    // listening for memory pressure event
    if (!strcmp(aTopic, "memory-pressure")) {
@@ -81,7 +81,7 @@ index 202f922d9773..455a749cfa74 100644
    } else if (!strcmp(aTopic, "application-background")) {
      (void)SendApplicationBackground();
    } else if (!strcmp(aTopic, "application-foreground")) {
-@@ -5985,6 +6003,16 @@ void ContentParent::CancelContentJSExecutionIfRunning(
+@@ -5995,6 +6013,16 @@ void ContentParent::CancelContentJSExecutionIfRunning(
        aCancelContentJSOptions);
  }
  
@@ -98,7 +98,7 @@ index 202f922d9773..455a749cfa74 100644
  void ContentParent::SetMainThreadQoSPriority(
      nsIThread::QoSPriority aQoSPriority) {
    if (!mHangMonitorActor) {
-@@ -8161,6 +8189,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
+@@ -8216,6 +8244,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
  }
  #endif
  

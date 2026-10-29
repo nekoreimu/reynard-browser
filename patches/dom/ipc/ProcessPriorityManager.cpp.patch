@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ProcessPriorityManager.cpp b/dom/ipc/ProcessPriorityManager.cpp
-index ed04a4a6d8a4..764f5c9ef0ef 100644
+index 7ec327c51730..a2034bb1e113 100644
 --- a/dom/ipc/ProcessPriorityManager.cpp
 +++ b/dom/ipc/ProcessPriorityManager.cpp
-@@ -60,9 +60,9 @@ using namespace mozilla::hal;
+@@ -61,9 +61,9 @@ using namespace mozilla::hal;
  
  #if defined(ANDROID) && defined(ENABLE_LOGGING)
  #  include <android/log.h>
@@ -15,7 +15,7 @@ index ed04a4a6d8a4..764f5c9ef0ef 100644
  #  define LOGP(fmt, ...)                                                \
      __android_log_print(                                                \
          ANDROID_LOG_INFO, "Gecko:ProcessPriorityManager",               \
-@@ -75,8 +75,8 @@ using namespace mozilla::hal;
+@@ -76,8 +76,8 @@ using namespace mozilla::hal;
  #  define LOGP(fmt, ...)                                                   \
      printf("ProcessPriorityManager[%schild-id=%" PRIu64 ", pid=%d] - " fmt \
             "\n",                                                           \
@@ -26,7 +26,7 @@ index ed04a4a6d8a4..764f5c9ef0ef 100644
  #else
  static LogModule* GetPPMLog() {
    static LazyLogModule sLog("ProcessPriorityManager");
-@@ -88,8 +88,8 @@ static LogModule* GetPPMLog() {
+@@ -89,8 +89,8 @@ static LogModule* GetPPMLog() {
  #  define LOGP(fmt, ...)                                                      \
      MOZ_LOG(GetPPMLog(), LogLevel::Debug,                                     \
              ("ProcessPriorityManager[%schild-id=%" PRIu64 ", pid=%d] - " fmt, \
@@ -37,7 +37,7 @@ index ed04a4a6d8a4..764f5c9ef0ef 100644
  #endif
  
  namespace geckoprofiler::markers {
-@@ -749,7 +749,7 @@ ProcessPriority ParticularProcessPriorityManager::ComputePriority() {
+@@ -757,7 +757,7 @@ ProcessPriority ParticularProcessPriorityManager::ComputePriority() {
    return PROCESS_PRIORITY_BACKGROUND;
  }
  
@@ -46,7 +46,7 @@ index ed04a4a6d8a4..764f5c9ef0ef 100644
  // Method used for setting QoS levels on background main threads.
  static bool PriorityUsesLowPowerMainThread(
      const hal::ProcessPriority& aPriority) {
-@@ -807,8 +807,8 @@ void ParticularProcessPriorityManager::SetPriorityNow(
+@@ -815,8 +815,8 @@ void ParticularProcessPriorityManager::SetPriorityNow(
      ProcessPriorityManagerImpl::GetSingleton()->NotifyProcessPriorityChanged(
          this, oldPriority);
  
@@ -57,7 +57,7 @@ index ed04a4a6d8a4..764f5c9ef0ef 100644
      // can go ahead and put the main thread in the background here. If the new
      // priority is the background priority, we can tell the OS to put the main
      // thread on low-power cores. Alternately, if we are changing from the
-@@ -822,6 +822,11 @@ void ParticularProcessPriorityManager::SetPriorityNow(
+@@ -830,6 +830,11 @@ void ParticularProcessPriorityManager::SetPriorityNow(
      if (!mContentParent->IsShuttingDown() &&
          PriorityUsesLowPowerMainThread(mPriority) !=
              PriorityUsesLowPowerMainThread(oldPriority)) {

@@ -1,8 +1,8 @@
 diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
-index d52f761dc99d..832aaabc27ad 100644
+index 20929977927a..270807221d51 100644
 --- a/gfx/2d/Factory.cpp
 +++ b/gfx/2d/Factory.cpp
-@@ -425,8 +425,13 @@ already_AddRefed<NativeFontResource> Factory::CreateNativeFontResource(
+@@ -407,8 +407,13 @@ already_AddRefed<NativeFontResource> Factory::CreateNativeFontResource(
  }
  
  already_AddRefed<UnscaledFont> Factory::CreateUnscaledFontFromFontDescriptor(
@@ -18,7 +18,7 @@ index d52f761dc99d..832aaabc27ad 100644
    switch (aType) {
  #ifdef WIN32
      case FontType::DWRITE:
-@@ -434,8 +439,8 @@ already_AddRefed<UnscaledFont> Factory::CreateUnscaledFontFromFontDescriptor(
+@@ -416,8 +421,8 @@ already_AddRefed<UnscaledFont> Factory::CreateUnscaledFontFromFontDescriptor(
                                                            aIndex);
  #elif defined(XP_DARWIN)
      case FontType::MAC:

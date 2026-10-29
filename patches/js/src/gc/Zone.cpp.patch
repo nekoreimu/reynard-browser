@@ -1,5 +1,5 @@
 diff --git a/js/src/gc/Zone.cpp b/js/src/gc/Zone.cpp
-index 82f4025987c2..12e391279618 100644
+index 44339e4c1ae6..3c55adf5feae 100644
 --- a/js/src/gc/Zone.cpp
 +++ b/js/src/gc/Zone.cpp
 @@ -35,7 +35,7 @@ Zone* const Zone::NotOnList = reinterpret_cast<Zone*>(1);

@@ -1,8 +1,8 @@
 diff --git a/toolkit/moz.configure b/toolkit/moz.configure
-index d006ca665319..2d8276e39128 100644
+index a16fc0e924c6..ce5f445ffc6b 100644
 --- a/toolkit/moz.configure
 +++ b/toolkit/moz.configure
-@@ -2771,7 +2771,7 @@ def wasm_sandboxing_libraries():
+@@ -2863,7 +2863,7 @@ def wasm_sandboxing_libraries():
  @depends(dependable(wasm_sandboxing_libraries), build_project, target)
  def default_wasm_sandboxing_libraries(libraries, build_project, target):
      if build_project != "tools/rusttests" and target.endianness == "little":

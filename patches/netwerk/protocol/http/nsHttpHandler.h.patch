@@ -1,5 +1,5 @@
 diff --git a/netwerk/protocol/http/nsHttpHandler.h b/netwerk/protocol/http/nsHttpHandler.h
-index 391a6aa9a1db..d4c249e07f46 100644
+index d054e108a6ef..8e92c0a654b2 100644
 --- a/netwerk/protocol/http/nsHttpHandler.h
 +++ b/netwerk/protocol/http/nsHttpHandler.h
 @@ -49,6 +49,7 @@ class nsIRequestContextService;

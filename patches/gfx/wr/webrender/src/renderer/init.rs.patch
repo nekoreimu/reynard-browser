@@ -1,5 +1,5 @@
 diff --git a/gfx/wr/webrender/src/renderer/init.rs b/gfx/wr/webrender/src/renderer/init.rs
-index 367a2a13cb4b..877329ebc172 100644
+index fef7eb28009a..d8356a95791d 100644
 --- a/gfx/wr/webrender/src/renderer/init.rs
 +++ b/gfx/wr/webrender/src/renderer/init.rs
 @@ -4,7 +4,7 @@

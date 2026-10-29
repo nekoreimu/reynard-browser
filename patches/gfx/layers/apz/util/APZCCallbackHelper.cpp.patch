@@ -1,8 +1,8 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 3587f7b34c03..c7a455d443b9 100644
+index ee33ace4fd97..b0586ef3e8a7 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-@@ -162,10 +162,15 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
+@@ -164,10 +164,15 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
      sf->SetScrollableByAPZ(!aRequest.IsScrollInfoLayer());
      if (sf->IsRootScrollFrameOfDocument()) {
        if (!APZCCallbackHelper::IsScrollInProgress(sf)) {
@@ -20,7 +20,7 @@ index 3587f7b34c03..c7a455d443b9 100644
                  /* aRepaint = */ false)) {
            // sf can't be destroyed if SetVisualViewportOffset returned true.
            sf->MarkEverScrolled();
-@@ -398,6 +403,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
+@@ -404,6 +409,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
    SetDisplayPortMargins(presShell, content, displayPortMargins,
                          aRequest.CalculateCompositedSizeInCssPixels());
    SetPaintRequestTime(content, aRequest.GetPaintRequestTime());

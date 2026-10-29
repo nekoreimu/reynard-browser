@@ -1,5 +1,5 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index 8598e3dc3509..d27f630c6768 100644
+index 8598e3dc3509..2b02ebbcd365 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
 @@ -6,43 +6,60 @@
@@ -1592,7 +1592,7 @@ index 8598e3dc3509..d27f630c6768 100644
 +  const nsPoint transformedOrigin = aRect.TopLeft();
 +
 +  const auto& fixedMargins = rootPresShell->GetFixedPositionMargins();
-+  if (fixedMargins && rootPC->IsKeyboardHiddenOrResizesContentMode() &&
++  if (fixedMargins && !rootPC->IsKeyboardVisibleOnOverlaysContent() &&
 +      nsDisplayOwnLayer::HasDynamicToolbar(rootFrame)) {
 +    auto* rootScrollFrame = rootPresShell->GetRootScrollContainerFrame();
 +    const nsMargin margins = CSSPixel::ToAppUnits(*fixedMargins);

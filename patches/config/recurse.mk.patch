@@ -1,14 +1,16 @@
 diff --git a/config/recurse.mk b/config/recurse.mk
-index 66fbd4940137..3e3fff227830 100644
+index b1766a7ac41a..6f82d6ec6efa 100644
 --- a/config/recurse.mk
 +++ b/config/recurse.mk
-@@ -197,8 +197,10 @@ endif
+@@ -195,6 +195,12 @@ endif
+ 
+ # Interdependencies that moz.build world don't know about yet for compilation.
  # Note some others are hardcoded or "guessed" in recursivemake.py and emitter.py
- ifdef MOZ_USING_WASM_SANDBOXING
- dom/media/ogg/target-objects extensions/spellcheck/hunspell/glue/target-objects gfx/thebes/target-objects parser/expat/target-objects parser/htmlparser/target-objects gfx/ots/src/target-objects: security/rlbox/pre-compile
++ifdef MOZ_USING_WASM_SANDBOXING
++dom/media/ogg/target-objects extensions/spellcheck/hunspell/glue/target-objects gfx/thebes/target-objects parser/expat/target-objects parser/htmlparser/target-objects gfx/ots/src/target-objects: security/rlbox/pre-compile
 +ifdef MOZ_WASM_SANDBOXING_SOUNDTOUCH
- dom/media/target-objects dom/media/mediasink/target-objects: media/libsoundtouch/src/pre-compile
- endif
++dom/media/target-objects dom/media/mediasink/target-objects: media/libsoundtouch/src/pre-compile
++endif
 +endif
  
  # Most things are built during compile (target/host), but some things happen during export

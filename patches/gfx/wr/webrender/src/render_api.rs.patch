@@ -1,5 +1,5 @@
 diff --git a/gfx/wr/webrender/src/render_api.rs b/gfx/wr/webrender/src/render_api.rs
-index 0b30ffa1a1b6..872ec303ded8 100644
+index c55fec97ee47..e392a81163d3 100644
 --- a/gfx/wr/webrender/src/render_api.rs
 +++ b/gfx/wr/webrender/src/render_api.rs
 @@ -442,9 +442,9 @@ impl Transaction {

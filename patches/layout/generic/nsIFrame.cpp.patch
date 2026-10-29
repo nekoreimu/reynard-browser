@@ -1,8 +1,8 @@
 diff --git a/layout/generic/nsIFrame.cpp b/layout/generic/nsIFrame.cpp
-index c3772a49a58f..fad333749ed7 100644
+index 133e04ffae7a..ce23e224f35a 100644
 --- a/layout/generic/nsIFrame.cpp
 +++ b/layout/generic/nsIFrame.cpp
-@@ -3447,6 +3447,9 @@ void nsIFrame::BuildDisplayListForStackingContext(
+@@ -3450,6 +3450,9 @@ void nsIFrame::BuildDisplayListForStackingContext(
    const bool useFixedPosition =
        disp->mPosition == StylePositionProperty::Fixed &&
        aBuilder->IsPaintingToWindow() && !IsMenuPopupFrame() &&
@@ -12,7 +12,7 @@ index c3772a49a58f..fad333749ed7 100644
        (DisplayPortUtils::IsFixedPosFrameInDisplayPort(this) ||
         BuilderHasScrolledClip(aBuilder));
  
-@@ -5004,7 +5007,33 @@ bool nsIFrame::IsSelectable(StyleUserSelect* aSelectStyle) const {
+@@ -5049,7 +5052,33 @@ bool nsIFrame::IsSelectable(StyleUserSelect* aSelectStyle) const {
    return style != StyleUserSelect::None;
  }
  

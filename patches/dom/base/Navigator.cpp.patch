@@ -1,5 +1,5 @@
 diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
-index f822db52921c..a19b1cdbc1fa 100644
+index 20fc3905d5d2..5f370116e515 100644
 --- a/dom/base/Navigator.cpp
 +++ b/dom/base/Navigator.cpp
 @@ -309,6 +309,19 @@ void Navigator::GetAppCodeName(nsAString& aAppCodeName, ErrorResult& aRv) {
@@ -62,7 +62,7 @@ index f822db52921c..a19b1cdbc1fa 100644
    if (aCallerType != CallerType::System) {
      // If fingerprinting resistance is on, we will spoof this value. See
      // nsRFPService.h for details about spoofed values.
-@@ -2035,6 +2074,18 @@ void Navigator::ClearPlatformCache() {
+@@ -2040,6 +2079,18 @@ void Navigator::ClearPlatformCache() {
    Navigator_Binding::ClearCachedPlatformValue(this);
  }
  
@@ -81,7 +81,7 @@ index f822db52921c..a19b1cdbc1fa 100644
  void Navigator::ClearLanguageCache() {
    Navigator_Binding::ClearCachedLanguageValue(this);
    Navigator_Binding::ClearCachedLanguagesValue(this);
-@@ -2064,6 +2115,8 @@ nsresult Navigator::GetPlatform(nsAString& aPlatform, Document* aCallerDoc,
+@@ -2069,6 +2120,8 @@ nsresult Navigator::GetPlatform(nsAString& aPlatform, Document* aCallerDoc,
  #elif defined(XP_MACOSX)
    // Always return "MacIntel", even on ARM64 macOS like Safari does.
    aPlatform.AssignLiteral("MacIntel");

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/NativeLayerCA.h b/gfx/layers/NativeLayerCA.h
-index 712e1cbbd116..b3aa93e51c03 100644
+index c7156fca6e5e..91ff34d976de 100644
 --- a/gfx/layers/NativeLayerCA.h
 +++ b/gfx/layers/NativeLayerCA.h
 @@ -10,6 +10,11 @@
@@ -85,7 +85,7 @@ index 712e1cbbd116..b3aa93e51c03 100644
    // How many times have we committed since the last time we emitted
    // telemetry?
    unsigned int mTelemetryCommitCount = 0;
-@@ -438,6 +477,10 @@ class NativeLayerCA : public NativeLayer {
+@@ -443,6 +482,10 @@ class NativeLayerCA : public NativeLayer {
    bool ApplyChanges(WhichRepresentation aRepresentation, UpdateType aUpdate,
                      bool* aMustRebuild);
  

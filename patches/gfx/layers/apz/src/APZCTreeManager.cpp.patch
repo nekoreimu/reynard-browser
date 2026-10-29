@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/APZCTreeManager.cpp b/gfx/layers/apz/src/APZCTreeManager.cpp
-index bed763449ed3..9746a372e215 100644
+index 033548404a11..83ad92fbe66c 100644
 --- a/gfx/layers/apz/src/APZCTreeManager.cpp
 +++ b/gfx/layers/apz/src/APZCTreeManager.cpp
 @@ -4,11 +4,13 @@
@@ -670,7 +670,7 @@ index bed763449ed3..9746a372e215 100644
    }
  }
  
-@@ -4130,11 +4255,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
+@@ -4129,11 +4254,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
  APZCTreeManager::StickyPositionInfo::StickyPositionInfo(
      const HitTestingTreeNode* aNode) {
    mStickyPositionAnimationId = aNode->GetStickyPositionAnimationId();

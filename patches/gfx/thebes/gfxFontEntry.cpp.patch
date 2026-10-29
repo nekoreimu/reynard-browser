@@ -1,8 +1,8 @@
 diff --git a/gfx/thebes/gfxFontEntry.cpp b/gfx/thebes/gfxFontEntry.cpp
-index c3b7212671f6..9e8bc992c480 100644
+index 8dcb93137d3f..92eeb4a606e5 100644
 --- a/gfx/thebes/gfxFontEntry.cpp
 +++ b/gfx/thebes/gfxFontEntry.cpp
-@@ -1724,9 +1724,11 @@ void gfxFontFamily::LocalizedName(nsACString& aLocalizedName) {
+@@ -1767,9 +1767,11 @@ void gfxFontFamily::LocalizedName(nsACString& aLocalizedName) {
  void gfxFontFamily::FindFontForChar(GlobalFontMatch* aMatchData) {
    gfxPlatformFontList::PlatformFontList()->mLock.AssertCurrentThreadIn();
  
@@ -15,7 +15,7 @@ index c3b7212671f6..9e8bc992c480 100644
        // none of the faces in the family support the required char,
        // so bail out immediately
        return;
-@@ -1758,7 +1760,13 @@ void gfxFontFamily::FindFontForChar(GlobalFontMatch* aMatchData) {
+@@ -1801,7 +1803,13 @@ void gfxFontFamily::FindFontForChar(GlobalFontMatch* aMatchData) {
      }
  
      aMatchData->mCmapsTested++;

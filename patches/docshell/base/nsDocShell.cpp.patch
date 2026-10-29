@@ -1,8 +1,8 @@
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 5be2ef463856..3ee3677e81c4 100644
+index 9890b717e687..6131ccd1110b 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
-@@ -2337,6 +2337,48 @@ nsDocShell::ClearCachedUserAgent() {
+@@ -2338,6 +2338,48 @@ nsDocShell::ClearCachedUserAgent() {
    return NS_OK;
  }
  
@@ -51,7 +51,7 @@ index 5be2ef463856..3ee3677e81c4 100644
  /* virtual */
  int32_t nsDocShell::ItemType() { return mItemType; }
  
-@@ -5673,23 +5715,35 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+@@ -5674,23 +5716,35 @@ nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
    return NS_OK;
  }
  
@@ -93,7 +93,7 @@ index 5be2ef463856..3ee3677e81c4 100644
  
    // DocumentChannel adds redirect chain to global history in the parent
    // process. The redirect chain can't be queried from the content process, so
-@@ -5738,6 +5792,8 @@ void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
+@@ -5739,6 +5793,8 @@ void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
        mLoadType & (LOAD_CMD_RELOAD | LOAD_CMD_HISTORY)) {
      mLoadType = LOAD_NORMAL_REPLACE;
    }
@@ -102,7 +102,7 @@ index 5be2ef463856..3ee3677e81c4 100644
  }
  
  NS_IMETHODIMP
-@@ -7147,6 +7203,11 @@ nsresult nsDocShell::CreateDocumentViewer(const nsACString& aContentType,
+@@ -7148,6 +7204,11 @@ nsresult nsDocShell::CreateDocumentViewer(const nsACString& aContentType,
    NS_ENSURE_SUCCESS(Embed(viewer, nullptr, false, aOpenedChannel, previousURI),
                      NS_ERROR_FAILURE);
  
@@ -114,7 +114,7 @@ index 5be2ef463856..3ee3677e81c4 100644
    if (!mBrowsingContext->GetHasLoadedNonInitialDocument()) {
      MOZ_ALWAYS_SUCCEEDS(mBrowsingContext->SetHasLoadedNonInitialDocument(true));
    }
-@@ -8524,6 +8585,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
+@@ -8525,6 +8586,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
    }
  }
  
@@ -156,7 +156,7 @@ index 5be2ef463856..3ee3677e81c4 100644
  // InternalLoad performs several of the steps from
  // https://html.spec.whatwg.org/#navigate.
  nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
-@@ -8577,6 +8673,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -8578,6 +8674,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
  
    MOZ_TRY(CheckDisallowedJavascriptLoad(aLoadState));
  
@@ -172,7 +172,7 @@ index 5be2ef463856..3ee3677e81c4 100644
    // If we don't have a target, we're loading into ourselves, and our load
    // delegate may want to intercept that load.
    SameDocumentNavigationState sameDocumentNavigationState;
-@@ -12254,6 +12359,15 @@ nsresult nsDocShell::OnLinkClick(
+@@ -12255,6 +12360,15 @@ nsresult nsDocShell::OnLinkClick(
  
    bool noOpenerImplied = false;
    nsAutoString target(aTargetSpec);

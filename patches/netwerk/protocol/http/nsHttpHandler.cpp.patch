@@ -1,5 +1,5 @@
 diff --git a/netwerk/protocol/http/nsHttpHandler.cpp b/netwerk/protocol/http/nsHttpHandler.cpp
-index 8f93ab816133..9306e5f13061 100644
+index c35867b90d60..e20605ba6669 100644
 --- a/netwerk/protocol/http/nsHttpHandler.cpp
 +++ b/netwerk/protocol/http/nsHttpHandler.cpp
 @@ -667,6 +667,23 @@ nsresult nsHttpHandler::InitConnectionMgr() {

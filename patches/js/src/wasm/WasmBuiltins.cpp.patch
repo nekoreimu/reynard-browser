@@ -1,8 +1,8 @@
 diff --git a/js/src/wasm/WasmBuiltins.cpp b/js/src/wasm/WasmBuiltins.cpp
-index c079845f8173..296ef6134082 100644
+index 77f5ac8f7000..827b6c036c0c 100644
 --- a/js/src/wasm/WasmBuiltins.cpp
 +++ b/js/src/wasm/WasmBuiltins.cpp
-@@ -2284,8 +2284,10 @@ bool wasm::EnsureBuiltinThunksInitialized(
+@@ -2321,8 +2321,10 @@ bool wasm::EnsureBuiltinThunksInitialized(
    }
  
    masm.executableCopy(thunks->codeBase);

@@ -1,8 +1,8 @@
 diff --git a/layout/generic/ScrollContainerFrame.cpp b/layout/generic/ScrollContainerFrame.cpp
-index b96ed7bb42df..6d476ac72c36 100644
+index 6bdde062c687..9bf5d89b6616 100644
 --- a/layout/generic/ScrollContainerFrame.cpp
 +++ b/layout/generic/ScrollContainerFrame.cpp
-@@ -3379,6 +3379,9 @@ void ScrollContainerFrame::ScrollToImpl(
+@@ -3381,6 +3381,9 @@ void ScrollContainerFrame::ScrollToImpl(
    }
  
    if (nsCOMPtr<nsIDocShell> docShell = presContext->GetDocShell()) {

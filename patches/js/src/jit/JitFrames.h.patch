@@ -1,5 +1,5 @@
 diff --git a/js/src/jit/JitFrames.h b/js/src/jit/JitFrames.h
-index 2848c678acd8..8145138f2704 100644
+index 1373380d563f..b753415b2daf 100644
 --- a/js/src/jit/JitFrames.h
 +++ b/js/src/jit/JitFrames.h
 @@ -29,6 +29,7 @@ namespace jit {
@@ -10,7 +10,7 @@ index 2848c678acd8..8145138f2704 100644
  class IonScript;
  class JitActivation;
  class JitFrameLayout;
-@@ -543,10 +544,13 @@ class IonICCallFrameLayout : public CommonFrameLayout {
+@@ -558,10 +559,13 @@ class IonICCallFrameLayout : public CommonFrameLayout {
    // Pointer to root the stub's JitCode.
    JitCode* stubCode_;
  
