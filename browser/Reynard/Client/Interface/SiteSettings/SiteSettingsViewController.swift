@@ -31,7 +31,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         case crossOriginStorageAccess
         case localDeviceAccess
         case localNetworkAccess
-        
+
         var title: String {
             switch self {
             case .camera:
