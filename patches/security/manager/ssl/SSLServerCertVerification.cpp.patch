@@ -1,19 +1,21 @@
 diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manager/ssl/SSLServerCertVerification.cpp
+index e4f3125..e3464b5 100644
 --- a/security/manager/ssl/SSLServerCertVerification.cpp
 +++ b/security/manager/ssl/SSLServerCertVerification.cpp
-@@ -94,5 +94,8 @@
- #include <cstring>
-
+@@ -91,6 +91,9 @@
+ 
+ #include "SSLServerCertVerification.h"
+ 
 +#ifdef XP_IOS
 +#  include <Security/Security.h>
 +#endif  // XP_IOS
  #include "CertVerifier.h"
  #include "CryptoTask.h"
  #include "ExtendedValidation.h"
-@@ -140,6 +143,100 @@
+@@ -138,6 +141,100 @@ using namespace mozilla::pkix;
  namespace mozilla {
  namespace psm {
-
+ 
 +#ifdef XP_IOS
 +// Asks the iOS system trust store whether it trusts the given peer chain
 +// for TLS server authentication. If it does, imports the anchor certificate
@@ -110,14 +112,8 @@ diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manag
 +#endif  // XP_IOS
  // do not use a nsCOMPtr to avoid static initializer/destructor
  nsIThreadPool* gCertVerificationThreadPool = nullptr;
-
-@@ -799,12 +896,34 @@
-   bool madeOCSPRequests = false;
-   nsTArray<nsTArray<uint8_t>> builtChainBytesArray;
-   nsTArray<uint8_t> certBytes(mPeerCertChain.ElementAt(0).Clone());
-   Result result = AuthCertificate(
-       *certVerifier, mPinArg, certBytes, mPeerCertChain, mHostName,
-       mOriginAttributes, mStapledOCSPResponse, mSCTsFromTLSExtension, mDCInfo,
+ 
+@@ -801,6 +898,28 @@ SSLServerCertVerificationJob::Run() {
        mProviderFlags, mTime, mCertVerifierFlags, builtChainBytesArray, evStatus,
        certificateTransparencyInfo, isCertChainRootBuiltInRoot,
        madeOCSPRequests);
@@ -143,7 +139,6 @@ diff --git a/security/manager/ssl/SSLServerCertVerification.cpp b/security/manag
 +    }
 +  }
 +#endif  // XP_IOS
-
+ 
    TimeDuration elapsed = TimeStamp::Now() - jobStartTime;
    if (result == Success) {
-
